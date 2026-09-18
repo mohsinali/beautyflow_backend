@@ -1,0 +1,32 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: beautyflow
+      POSTGRES_PASSWORD: beautyflow_dev
+      POSTGRES_DB: beautyflow
+    ports:
+      - '${POSTGRES_PORT:-5433}:5432'
+    volumes:
+      - beautyflow_postgres:/var/lib/postgresql/data
+      - ./docker/postgres/init-test-db.sql:/docker-entrypoint-initdb.d/init-test-db.sql:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U beautyflow -d beautyflow']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+  redis:
+    image: redis:8-alpine
+    command: redis-server --appendonly yes
+    ports:
+      - '6379:6379'
+    volumes:
+      - beautyflow_redis:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+volumes:
+  beautyflow_postgres:
+  beautyflow_redis:

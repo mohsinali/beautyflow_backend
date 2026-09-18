@@ -1,0 +1,177 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Language {
+  EN
+  AR
+}
+
+enum TenantStatus {
+  ACTIVE
+  SUSPENDED
+  INACTIVE
+}
+
+enum UserStatus {
+  ACTIVE
+  INVITED
+  SUSPENDED
+  INACTIVE
+}
+
+enum PlatformRole {
+  SUPER_ADMIN
+}
+
+enum TenantRole {
+  SALON_OWNER
+  RECEPTIONIST
+  SERVICE_PROVIDER
+}
+
+enum MembershipStatus {
+  ACTIVE
+  INVITED
+  SUSPENDED
+  INACTIVE
+}
+
+model Tenant {
+  id                String             @id @default(uuid()) @db.Uuid
+  name              String
+  slug              String             @unique
+  defaultLanguage   Language           @default(EN)
+  currencyCode      String             @db.VarChar(3)
+  timezone          String
+  status            TenantStatus       @default(ACTIVE)
+  createdAt         DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime           @updatedAt @db.Timestamptz(3)
+  deletedAt         DateTime?          @db.Timestamptz(3)
+  branches          Branch[]
+  memberships       TenantMembership[]
+  membershipBranches MembershipBranch[]
+  refreshSessions   RefreshSession[]
+  auditLogs         AuditLog[]
+
+  @@index([status, deletedAt])
+}
+
+model Branch {
+  id                String             @id @default(uuid()) @db.Uuid
+  tenantId          String             @db.Uuid
+  name              String
+  code              String
+  phone             String?
+  email             String?
+  address           String?
+  city              String?
+  timezone          String?
+  isActive          Boolean            @default(true)
+  createdAt         DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime           @updatedAt @db.Timestamptz(3)
+  deletedAt         DateTime?          @db.Timestamptz(3)
+  tenant            Tenant             @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  membershipBranches MembershipBranch[]
+  auditLogs         AuditLog[]
+
+  @@unique([tenantId, code])
+  @@unique([id, tenantId])
+  @@index([tenantId, isActive, deletedAt])
+}
+
+model User {
+  id              String             @id @default(uuid()) @db.Uuid
+  email           String             @unique
+  firstName       String
+  lastName        String
+  passwordHash    String
+  status          UserStatus         @default(ACTIVE)
+  platformRole    PlatformRole?
+  lastLoginAt     DateTime?          @db.Timestamptz(3)
+  createdAt       DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime           @updatedAt @db.Timestamptz(3)
+  deletedAt       DateTime?          @db.Timestamptz(3)
+  memberships     TenantMembership[]
+  refreshSessions RefreshSession[]
+  auditLogs        AuditLog[]         @relation("AuditActor")
+
+  @@index([status, deletedAt])
+}
+
+model TenantMembership {
+  id                 String             @id @default(uuid()) @db.Uuid
+  tenantId           String             @db.Uuid
+  userId             String             @db.Uuid
+  role               TenantRole
+  status             MembershipStatus   @default(ACTIVE)
+  createdAt          DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime           @updatedAt @db.Timestamptz(3)
+  tenant             Tenant             @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  user               User               @relation(fields: [userId], references: [id], onDelete: Restrict)
+  branchAssignments  MembershipBranch[]
+
+  @@unique([tenantId, userId])
+  @@unique([id, tenantId])
+  @@index([tenantId, status, role])
+  @@index([userId, status])
+}
+
+model MembershipBranch {
+  membershipId String   @db.Uuid
+  branchId     String   @db.Uuid
+  tenantId     String   @db.Uuid
+  createdAt    DateTime @default(now()) @db.Timestamptz(3)
+  membership   TenantMembership @relation(fields: [membershipId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  branch       Branch   @relation(fields: [branchId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@id([membershipId, branchId])
+  @@index([tenantId, branchId])
+}
+
+model RefreshSession {
+  id           String    @id @default(uuid()) @db.Uuid
+  familyId     String    @db.Uuid
+  userId       String    @db.Uuid
+  tenantId     String?   @db.Uuid
+  tokenHash    String
+  expiresAt    DateTime  @db.Timestamptz(3)
+  revokedAt    DateTime? @db.Timestamptz(3)
+  replacedById String?   @db.Uuid
+  ipAddress    String?
+  userAgent    String?
+  createdAt    DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime  @updatedAt @db.Timestamptz(3)
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant       Tenant?   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt, expiresAt])
+  @@index([familyId])
+}
+
+model AuditLog {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String?  @db.Uuid
+  branchId    String?  @db.Uuid
+  actorUserId String?  @db.Uuid
+  action      String
+  entityType  String
+  entityId    String?
+  metadata    Json?
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+  tenant      Tenant?  @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  branch      Branch?  @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  actor       User?    @relation("AuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, createdAt])
+  @@index([actorUserId, createdAt])
+  @@index([entityType, entityId])
+}
