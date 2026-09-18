@@ -18,6 +18,8 @@ import { PrismaModule } from './prisma/prisma.module';
 import { RedisModule } from './redis/redis.module';
 import { TenantsModule } from './tenants/tenants.module';
 import { UsersModule } from './users/users.module';
+import { ServiceCatalogModule } from './service-catalog/service-catalog.module';
+import { ServiceProvidersModule } from './service-providers/service-providers.module';
 
 @Module({
   imports: [
@@ -33,6 +35,8 @@ import { UsersModule } from './users/users.module';
     BranchesModule,
     MembershipsModule,
     HealthModule,
+    ServiceCatalogModule,
+    ServiceProvidersModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

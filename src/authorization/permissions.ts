@@ -14,6 +14,20 @@ export enum Permission {
   MEMBERSHIP_ROLE_ASSIGN = 'membership.role.assign',
   BRANCH_ACCESS_ASSIGN = 'branch.access.assign',
   PROFILE_VIEW_OWN = 'profile.view.own',
+  SERVICE_CATEGORY_CREATE = 'service-category:create',
+  SERVICE_CATEGORY_READ = 'service-category:read',
+  SERVICE_CATEGORY_UPDATE = 'service-category:update',
+  SERVICE_CATEGORY_DEACTIVATE = 'service-category:deactivate',
+  CATALOG_SERVICE_CREATE = 'catalog-service:create',
+  CATALOG_SERVICE_READ = 'catalog-service:read',
+  CATALOG_SERVICE_UPDATE = 'catalog-service:update',
+  CATALOG_SERVICE_DEACTIVATE = 'catalog-service:deactivate',
+  CATALOG_SERVICE_CONFIGURE_BRANCH = 'catalog-service:configure-branch',
+  SERVICE_PROVIDER_CREATE = 'service-provider:create',
+  SERVICE_PROVIDER_READ = 'service-provider:read',
+  SERVICE_PROVIDER_UPDATE = 'service-provider:update',
+  SERVICE_PROVIDER_DEACTIVATE = 'service-provider:deactivate',
+  SERVICE_PROVIDER_MANAGE_QUALIFICATIONS = 'service-provider:manage-qualifications',
   PLATFORM_TENANT_CREATE = 'platform.tenant.create',
   PLATFORM_TENANT_VIEW = 'platform.tenant.view',
   PLATFORM_TENANT_UPDATE = 'platform.tenant.update',
@@ -25,8 +39,20 @@ const owner = Object.values(Permission).filter((permission) => !permission.start
 
 export const TENANT_ROLE_PERMISSIONS: Record<TenantRole, readonly Permission[]> = {
   SALON_OWNER: owner,
-  RECEPTIONIST: [Permission.BRANCH_VIEW, Permission.PROFILE_VIEW_OWN],
-  SERVICE_PROVIDER: [Permission.BRANCH_VIEW, Permission.PROFILE_VIEW_OWN],
+  RECEPTIONIST: [
+    Permission.BRANCH_VIEW,
+    Permission.PROFILE_VIEW_OWN,
+    Permission.SERVICE_CATEGORY_READ,
+    Permission.CATALOG_SERVICE_READ,
+    Permission.SERVICE_PROVIDER_READ,
+  ],
+  SERVICE_PROVIDER: [
+    Permission.BRANCH_VIEW,
+    Permission.PROFILE_VIEW_OWN,
+    Permission.SERVICE_CATEGORY_READ,
+    Permission.CATALOG_SERVICE_READ,
+    Permission.SERVICE_PROVIDER_READ,
+  ],
 };
 
 export const PLATFORM_ROLE_PERMISSIONS: Record<PlatformRole, readonly Permission[]> = {

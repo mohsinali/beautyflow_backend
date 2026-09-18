@@ -125,3 +125,108 @@ The sample tenant is `glow-salon`, with `MAIN` and `NORTH` branches. Defaults us
 Soft status/deactivation is used instead of business-record deletion. Tenant creation (tenant, initial branch, user/membership, audit) is transactional. Audit metadata records changed field names and identifiers but never credentials or tokens. Email invitation delivery is deferred; staff can be created directly or an existing login identity can be attached to a tenant.
 
 Customers, service catalog, provider business profiles, visits, visit items, paid-status tracking, payments, and reports are intentionally deferred. Payment processing itself remains outside BeautyFlow; a later stage will track paid status only.
+# Stage 2: service catalog and provider profiles
+
+BeautyFlow uses **service category** for a tenant-owned grouping, **catalog service** for a
+treatment sold by a salon, and **service provider** for a professional who can perform catalog
+services. Customer visits, visit items, appointments, schedules, commissions, payments, POS UI,
+inventory, and reporting are intentionally deferred.
+
+## Data model and behavior
+
+- `ServiceCategory` and `CatalogService` are tenant-owned, Unicode-safe, soft-state records.
+  Server-maintained NFKC/lowercase normalized names prevent accidental duplicates. Service codes
+  are normalized to uppercase and are unique per tenant. Prices are PostgreSQL `DECIMAL(12,2)`.
+- `BranchService` stores only exceptions. With no row, an active service is available and uses its
+  default price. A row can disable it and/or override its price. Effective availability also
+  requires the category and service to be active; deactivating either therefore removes it from
+  operational catalog listings without deleting history.
+- `ServiceProviderProfile` is a one-to-one extension of an existing `SERVICE_PROVIDER`
+  `TenantMembership`; it never creates another login identity. Branch access remains exclusively in
+  `MembershipBranch`. `ProviderService` records tenant-wide qualifications.
+- Structural eligibility requires an active tenant, branch, user, membership, profile, category and
+  service; an existing membership-to-branch assignment; a qualification; and effective branch
+  availability. It does not evaluate schedules or appointment-time availability.
+- Composite tenant foreign keys plus tenant-scoped application lookups reject cross-tenant links.
+  Foreign resource IDs return the same not-found response as missing resources.
+
+## API and authorization
+
+All routes use `/api/v1`, bearer authentication, the standard response envelope, pagination, and
+structured error codes. Swagger is available at `/api/docs` when `SWAGGER_ENABLED=true`.
+
+- Categories: `POST/GET /service-categories`, `GET/PATCH /service-categories/:id`, and
+  `POST /service-categories/:id/deactivate|reactivate`.
+- Services: `POST/GET /catalog-services`, `GET/PATCH /catalog-services/:id`, and
+  `POST /catalog-services/:id/deactivate|reactivate`.
+- Branch catalog: `GET /branches/:branchId/catalog-services`,
+  `PUT /branches/:branchId/catalog-services/:serviceId`, and
+  `DELETE /branches/:branchId/catalog-services/:serviceId/configuration`.
+- Providers: `POST/GET /service-providers`, `GET/PATCH /service-providers/:id`, status routes, and
+  qualification `GET`, atomic replacement `PUT`, idempotent add `POST`, and remove `DELETE` routes.
+- Eligibility: `GET /branches/:branchId/catalog-services/:serviceId/eligible-providers`.
+
+Salon Owners receive all Stage 2 management permissions. Receptionists can read active categories,
+assigned-branch catalogs, assigned-branch active providers, and eligibility results. Service
+Providers can read assigned-branch catalogs and only their own profile/qualifications. Neither
+staff role can mutate catalog, pricing, profile, or qualification data. Platform Super Admin still
+requires explicit tenant context and is not silently admitted to tenant routes.
+
+Example bodies:
+
+```json
+{ "name": "Hair", "color": "#7C3AED", "sortOrder": 10 }
+```
+
+```json
+{
+  "categoryId": "00000000-0000-4000-8000-000000000001",
+  "name": "Haircut",
+  "code": "CUT",
+  "defaultPrice": 1500.00,
+  "durationMinutes": 45
+}
+```
+
+```json
+{ "isAvailable": true, "priceOverride": 1750.00 }
+```
+
+```json
+{
+  "membershipId": "00000000-0000-4000-8000-000000000002",
+  "displayName": "Sam Stylist",
+  "jobTitle": "Senior Stylist"
+}
+```
+
+```json
+{ "serviceIds": ["00000000-0000-4000-8000-000000000003"] }
+```
+
+The branch catalog and eligible-provider examples are read with:
+
+```text
+GET /api/v1/branches/{branchId}/catalog-services
+GET /api/v1/branches/{branchId}/catalog-services/{serviceId}/eligible-providers
+```
+
+## Migration, seed, and verification
+
+Migration `20260918020000_stage_2_service_catalog_providers` creates all five Stage 2 entities,
+indexes, checks, and tenant-consistent foreign keys. The idempotent seed adds Hair, Nails, Makeup,
+and Skin Care; eight services; a disabled branch service; a branch price override; two providers;
+branch assignments; and distinct qualifications while preserving foundation accounts.
+
+```bash
+npm run prisma:generate
+npm run prisma:migrate:deploy
+npm run prisma:seed
+npm run prisma:seed # idempotency check
+npm run format:check
+npm run lint
+npm run typecheck
+npm test
+npm run test:e2e
+npm run build
+```

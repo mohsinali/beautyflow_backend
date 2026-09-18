@@ -43,42 +43,48 @@ enum MembershipStatus {
 }
 
 model Tenant {
-  id                String             @id @default(uuid()) @db.Uuid
-  name              String
-  slug              String             @unique
-  defaultLanguage   Language           @default(EN)
-  currencyCode      String             @db.VarChar(3)
-  timezone          String
-  status            TenantStatus       @default(ACTIVE)
-  createdAt         DateTime           @default(now()) @db.Timestamptz(3)
-  updatedAt         DateTime           @updatedAt @db.Timestamptz(3)
-  deletedAt         DateTime?          @db.Timestamptz(3)
-  branches          Branch[]
-  memberships       TenantMembership[]
+  id                 String                   @id @default(uuid()) @db.Uuid
+  name               String
+  slug               String                   @unique
+  defaultLanguage    Language                 @default(EN)
+  currencyCode       String                   @db.VarChar(3)
+  timezone           String
+  status             TenantStatus             @default(ACTIVE)
+  createdAt          DateTime                 @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime                 @updatedAt @db.Timestamptz(3)
+  deletedAt          DateTime?                @db.Timestamptz(3)
+  branches           Branch[]
+  memberships        TenantMembership[]
   membershipBranches MembershipBranch[]
-  refreshSessions   RefreshSession[]
-  auditLogs         AuditLog[]
+  refreshSessions    RefreshSession[]
+  auditLogs          AuditLog[]
+  serviceCategories  ServiceCategory[]
+  catalogServices    CatalogService[]
+  branchServices     BranchService[]
+  providerProfiles   ServiceProviderProfile[]
+  providerServices   ProviderService[]
 
   @@index([status, deletedAt])
 }
 
 model Branch {
-  id                String             @id @default(uuid()) @db.Uuid
-  tenantId          String             @db.Uuid
-  name              String
-  code              String
-  phone             String?
-  email             String?
-  address           String?
-  city              String?
-  timezone          String?
-  isActive          Boolean            @default(true)
-  createdAt         DateTime           @default(now()) @db.Timestamptz(3)
-  updatedAt         DateTime           @updatedAt @db.Timestamptz(3)
-  deletedAt         DateTime?          @db.Timestamptz(3)
-  tenant            Tenant             @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  id                 String             @id @default(uuid()) @db.Uuid
+  tenantId           String             @db.Uuid
+  name               String
+  code               String
+  phone              String?
+  email              String?
+  address            String?
+  city               String?
+  timezone           String?
+  isActive           Boolean            @default(true)
+  createdAt          DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime           @updatedAt @db.Timestamptz(3)
+  deletedAt          DateTime?          @db.Timestamptz(3)
+  tenant             Tenant             @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   membershipBranches MembershipBranch[]
-  auditLogs         AuditLog[]
+  auditLogs          AuditLog[]
+  branchServices     BranchService[]
 
   @@unique([tenantId, code])
   @@unique([id, tenantId])
@@ -99,22 +105,23 @@ model User {
   deletedAt       DateTime?          @db.Timestamptz(3)
   memberships     TenantMembership[]
   refreshSessions RefreshSession[]
-  auditLogs        AuditLog[]         @relation("AuditActor")
+  auditLogs       AuditLog[]         @relation("AuditActor")
 
   @@index([status, deletedAt])
 }
 
 model TenantMembership {
-  id                 String             @id @default(uuid()) @db.Uuid
-  tenantId           String             @db.Uuid
-  userId             String             @db.Uuid
-  role               TenantRole
-  status             MembershipStatus   @default(ACTIVE)
-  createdAt          DateTime           @default(now()) @db.Timestamptz(3)
-  updatedAt          DateTime           @updatedAt @db.Timestamptz(3)
-  tenant             Tenant             @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  user               User               @relation(fields: [userId], references: [id], onDelete: Restrict)
-  branchAssignments  MembershipBranch[]
+  id                String                  @id @default(uuid()) @db.Uuid
+  tenantId          String                  @db.Uuid
+  userId            String                  @db.Uuid
+  role              TenantRole
+  status            MembershipStatus        @default(ACTIVE)
+  createdAt         DateTime                @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime                @updatedAt @db.Timestamptz(3)
+  tenant            Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  user              User                    @relation(fields: [userId], references: [id], onDelete: Restrict)
+  branchAssignments MembershipBranch[]
+  providerProfile   ServiceProviderProfile?
 
   @@unique([tenantId, userId])
   @@unique([id, tenantId])
@@ -123,13 +130,13 @@ model TenantMembership {
 }
 
 model MembershipBranch {
-  membershipId String   @db.Uuid
-  branchId     String   @db.Uuid
-  tenantId     String   @db.Uuid
-  createdAt    DateTime @default(now()) @db.Timestamptz(3)
+  membershipId String           @db.Uuid
+  branchId     String           @db.Uuid
+  tenantId     String           @db.Uuid
+  createdAt    DateTime         @default(now()) @db.Timestamptz(3)
   membership   TenantMembership @relation(fields: [membershipId, tenantId], references: [id, tenantId], onDelete: Cascade)
-  branch       Branch   @relation(fields: [branchId, tenantId], references: [id, tenantId], onDelete: Cascade)
-  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch       Branch           @relation(fields: [branchId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  tenant       Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@id([membershipId, branchId])
   @@index([tenantId, branchId])
@@ -174,4 +181,110 @@ model AuditLog {
   @@index([tenantId, createdAt])
   @@index([actorUserId, createdAt])
   @@index([entityType, entityId])
+}
+
+model ServiceCategory {
+  id             String           @id @default(uuid()) @db.Uuid
+  tenantId       String           @db.Uuid
+  name           String           @db.VarChar(120)
+  normalizedName String           @db.VarChar(120)
+  description    String?          @db.VarChar(1000)
+  color          String?          @db.VarChar(7)
+  iconKey        String?          @db.VarChar(50)
+  sortOrder      Int              @default(0)
+  isActive       Boolean          @default(true)
+  createdAt      DateTime         @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime         @updatedAt @db.Timestamptz(3)
+  deletedAt      DateTime?        @db.Timestamptz(3)
+  tenant         Tenant           @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  services       CatalogService[]
+
+  @@unique([id, tenantId])
+  @@index([tenantId, isActive, sortOrder])
+  @@index([tenantId, normalizedName])
+}
+
+model CatalogService {
+  id               String            @id @default(uuid()) @db.Uuid
+  tenantId         String            @db.Uuid
+  categoryId       String            @db.Uuid
+  name             String            @db.VarChar(160)
+  normalizedName   String            @db.VarChar(160)
+  description      String?           @db.VarChar(2000)
+  code             String?           @db.VarChar(50)
+  defaultPrice     Decimal           @db.Decimal(12, 2)
+  durationMinutes  Int?
+  color            String?           @db.VarChar(7)
+  iconKey          String?           @db.VarChar(50)
+  sortOrder        Int               @default(0)
+  isActive         Boolean           @default(true)
+  createdAt        DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime          @updatedAt @db.Timestamptz(3)
+  deletedAt        DateTime?         @db.Timestamptz(3)
+  tenant           Tenant            @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  category         ServiceCategory   @relation(fields: [categoryId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  branchServices   BranchService[]
+  providerServices ProviderService[]
+
+  @@unique([id, tenantId])
+  @@unique([tenantId, code])
+  @@index([tenantId, categoryId, isActive, sortOrder])
+  @@index([tenantId, normalizedName])
+}
+
+model BranchService {
+  id               String         @id @default(uuid()) @db.Uuid
+  tenantId         String         @db.Uuid
+  branchId         String         @db.Uuid
+  catalogServiceId String         @db.Uuid
+  isAvailable      Boolean        @default(true)
+  priceOverride    Decimal?       @db.Decimal(12, 2)
+  createdAt        DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime       @updatedAt @db.Timestamptz(3)
+  tenant           Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch           Branch         @relation(fields: [branchId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  catalogService   CatalogService @relation(fields: [catalogServiceId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@unique([branchId, catalogServiceId])
+  @@index([tenantId, branchId, isAvailable])
+  @@index([tenantId, catalogServiceId])
+}
+
+model ServiceProviderProfile {
+  id              String            @id @default(uuid()) @db.Uuid
+  tenantId        String            @db.Uuid
+  membershipId    String            @db.Uuid
+  displayName     String            @db.VarChar(160)
+  normalizedName  String            @db.VarChar(160)
+  phone           String?           @db.VarChar(50)
+  jobTitle        String?           @db.VarChar(120)
+  bio             String?           @db.VarChar(2000)
+  profileImageUrl String?           @db.VarChar(2048)
+  isActive        Boolean           @default(true)
+  createdAt       DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime          @updatedAt @db.Timestamptz(3)
+  deletedAt       DateTime?         @db.Timestamptz(3)
+  tenant          Tenant            @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  membership      TenantMembership  @relation(fields: [membershipId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  qualifications  ProviderService[]
+
+  @@unique([id, tenantId])
+  @@unique([membershipId])
+  @@unique([membershipId, tenantId])
+  @@index([tenantId, isActive, normalizedName])
+}
+
+model ProviderService {
+  id                String                 @id @default(uuid()) @db.Uuid
+  tenantId          String                 @db.Uuid
+  providerProfileId String                 @db.Uuid
+  catalogServiceId  String                 @db.Uuid
+  createdAt         DateTime               @default(now()) @db.Timestamptz(3)
+  tenant            Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  providerProfile   ServiceProviderProfile @relation(fields: [providerProfileId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  catalogService    CatalogService         @relation(fields: [catalogServiceId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@unique([providerProfileId, catalogServiceId])
+  @@index([tenantId, catalogServiceId])
+  @@index([tenantId, providerProfileId])
 }
