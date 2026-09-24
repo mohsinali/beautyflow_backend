@@ -136,6 +136,10 @@ inventory, and reporting are intentionally deferred.
 
 ## Data model and behavior
 
+For a detailed explanation of provider identity, the **Service Provider Membership** field,
+`ServiceProviderProfile`, `ProviderService`, branch assignment, and eligibility, see
+[Service provider domain model](docs/service-provider-domain.md).
+
 - `ServiceCategory` and `CatalogService` are tenant-owned, Unicode-safe, soft-state records.
   Server-maintained NFKC/lowercase normalized names prevent accidental duplicates. Service codes
   are normalized to uppercase and are unique per tenant. Prices are PostgreSQL `DECIMAL(12,2)`.
