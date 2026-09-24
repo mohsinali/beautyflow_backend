@@ -59,6 +59,8 @@ npm run test:e2e
 
 Environment is validated at startup. Secrets must be at least 32 characters and must differ in deployed environments. `CORS_ORIGINS` is a comma-separated allowlist. `TRUST_PROXY` is `0`, a hop count, or a boolean and must match the actual reverse-proxy topology. Swagger should be disabled in production unless intentionally protected. Never commit `.env`.
 
+Provider photos use local storage by default. `PROVIDER_PHOTO_UPLOAD_DIR` selects the storage directory (default `./uploads/provider-photos`) and `PROVIDER_PHOTO_MAX_BYTES` sets the upload limit (default 5 MiB). Production deployments must mount this directory as persistent storage until an S3-compatible storage implementation is introduced.
+
 `prisma.config.ts` explicitly loads the root `.env`, so Prisma CLI commands use the same `DATABASE_URL` as the application. For the supplied Docker Compose stack, retain the example URL using user `beautyflow` and host port `5433`; a locally installed PostgreSQL user such as `postgres` has different credentials and is not the Compose database.
 
 ## Authentication and tenant resolution

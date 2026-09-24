@@ -24,4 +24,10 @@ export const envSchema = Joi.object({
   SWAGGER_ENABLED: Joi.boolean().truthy('true').falsy('false').default(false),
   TRUST_PROXY: Joi.alternatives().try(Joi.boolean(), Joi.number().integer().min(0)).default(0),
   LOG_LEVEL: Joi.string().valid('error', 'warn', 'log', 'info', 'debug', 'verbose').default('log'),
+  PROVIDER_PHOTO_UPLOAD_DIR: Joi.string().trim().min(1).default('./uploads/provider-photos'),
+  PROVIDER_PHOTO_MAX_BYTES: Joi.number()
+    .integer()
+    .min(1)
+    .max(20 * 1024 * 1024)
+    .default(5 * 1024 * 1024),
 }).unknown(true);

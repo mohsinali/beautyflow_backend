@@ -10,8 +10,13 @@ import {
   Put,
   Query,
   Req,
+  Res,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import type { Response } from 'express';
 import { RequirePermissions } from '../authorization/authorization.decorators';
 import { Permission } from '../authorization/permissions';
 import { CurrentTenant, CurrentUser } from '../common/decorators/current-context.decorators';
@@ -23,12 +28,16 @@ import {
   UpdateServiceProviderDto,
 } from './dto/service-provider.dto';
 import { ServiceProvidersService } from './service-providers.service';
+import { ProviderPhotoService, type UploadedProviderPhoto } from './provider-photo.service';
 
 @ApiTags('service-providers')
 @ApiBearerAuth()
 @Controller('service-providers')
 export class ServiceProvidersController {
-  constructor(private readonly providers: ServiceProvidersService) {}
+  constructor(
+    private readonly providers: ServiceProvidersService,
+    private readonly photos: ProviderPhotoService,
+  ) {}
   @Post()
   @RequirePermissions(Permission.SERVICE_PROVIDER_CREATE)
   @ApiOperation({ summary: 'Create a profile for an existing Service Provider membership' })
@@ -45,6 +54,11 @@ export class ServiceProvidersController {
   list(@CurrentUser() actor: AuthContext, @Query() query: ServiceProviderListDto) {
     return this.providers.list(actor, query);
   }
+  @Get('available-memberships')
+  @RequirePermissions(Permission.SERVICE_PROVIDER_CREATE)
+  availableMemberships(@CurrentTenant() tenantId: string) {
+    return this.providers.availableMemberships(tenantId);
+  }
   @Get(':providerId')
   @RequirePermissions(Permission.SERVICE_PROVIDER_READ)
   get(@CurrentUser() actor: AuthContext, @Param('providerId', ParseUUIDPipe) id: string) {
@@ -60,6 +74,45 @@ export class ServiceProvidersController {
     @Req() request: RequestWithContext,
   ) {
     return this.providers.update(tenantId, id, dto, actor, request);
+  }
+  @Post(':providerId/photo')
+  @RequirePermissions(Permission.SERVICE_PROVIDER_UPDATE)
+  @UseInterceptors(FileInterceptor('photo', { limits: { fileSize: 20 * 1024 * 1024, files: 1 } }))
+  uploadPhoto(
+    @CurrentTenant() tenantId: string,
+    @Param('providerId', ParseUUIDPipe) id: string,
+    @UploadedFile() file: UploadedProviderPhoto | undefined,
+    @CurrentUser() actor: AuthContext,
+    @Req() request: RequestWithContext,
+  ) {
+    return this.photos.replace(tenantId, id, file, actor, request);
+  }
+  @Get(':providerId/photo')
+  @RequirePermissions(Permission.SERVICE_PROVIDER_READ)
+  async photo(
+    @CurrentTenant() tenantId: string,
+    @Param('providerId', ParseUUIDPipe) id: string,
+    @CurrentUser() actor: AuthContext,
+    @Res() response: Response,
+  ) {
+    await this.providers.get(actor, id);
+    const file = await this.photos.read(tenantId, id);
+    response.set({
+      'Content-Type': file.contentType,
+      'Cache-Control': 'private, max-age=3600',
+      'X-Content-Type-Options': 'nosniff',
+    });
+    response.send(file.buffer);
+  }
+  @Delete(':providerId/photo')
+  @RequirePermissions(Permission.SERVICE_PROVIDER_UPDATE)
+  removePhoto(
+    @CurrentTenant() tenantId: string,
+    @Param('providerId', ParseUUIDPipe) id: string,
+    @CurrentUser() actor: AuthContext,
+    @Req() request: RequestWithContext,
+  ) {
+    return this.photos.remove(tenantId, id, actor, request);
   }
   @Post(':providerId/deactivate')
   @RequirePermissions(Permission.SERVICE_PROVIDER_DEACTIVATE)

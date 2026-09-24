@@ -25,6 +25,7 @@ const providerSelect = {
   jobTitle: true,
   bio: true,
   profileImageUrl: true,
+  photoStorageKey: true,
   isActive: true,
   createdAt: true,
   updatedAt: true,
@@ -46,7 +47,7 @@ const providerSelect = {
           name: true,
           code: true,
           isActive: true,
-          category: { select: { isActive: true } },
+          category: { select: { id: true, name: true, isActive: true } },
         },
       },
     },
@@ -174,6 +175,26 @@ export class ServiceProvidersService {
       items: items.map((item) => this.serialize(item)),
       meta: pageMeta(total, query.page, query.pageSize),
     };
+  }
+
+  async availableMemberships(tenantId: string) {
+    return this.prisma.tenantMembership.findMany({
+      where: {
+        tenantId,
+        role: TenantRole.SERVICE_PROVIDER,
+        status: MembershipStatus.ACTIVE,
+        user: { status: UserStatus.ACTIVE, deletedAt: null },
+        providerProfile: null,
+      },
+      select: {
+        id: true,
+        user: { select: { email: true, firstName: true, lastName: true } },
+        branchAssignments: {
+          select: { branch: { select: { id: true, name: true, code: true, isActive: true } } },
+        },
+      },
+      orderBy: [{ user: { firstName: 'asc' } }, { id: 'asc' }],
+    });
   }
 
   async get(auth: AuthContext, providerId: string) {
@@ -371,6 +392,10 @@ export class ServiceProvidersService {
 
   private serialize<
     T extends {
+      id: string;
+      profileImageUrl: string | null;
+      photoStorageKey: string | null;
+      updatedAt: Date;
       membership: {
         status: MembershipStatus;
         user: { status: UserStatus };
@@ -380,10 +405,13 @@ export class ServiceProvidersService {
       isActive: boolean;
     },
   >(item: T) {
-    const { membership, qualifications, ...profile } = item;
+    const { membership, qualifications, photoStorageKey, ...profile } = item;
     const { branchAssignments, user, ...safeMembership } = membership;
     return {
       ...profile,
+      photoUrl: photoStorageKey
+        ? `/service-providers/${profile.id}/photo?v=${profile.updatedAt.getTime()}`
+        : profile.profileImageUrl,
       membership: safeMembership,
       user,
       assignedBranches: branchAssignments.map((entry) => entry.branch),

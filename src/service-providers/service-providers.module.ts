@@ -5,11 +5,19 @@ import {
   ServiceProvidersController,
 } from './service-providers.controller';
 import { ServiceProvidersService } from './service-providers.service';
+import { ProviderPhotoService } from './provider-photo.service';
+import { LocalProviderPhotoStorage } from './storage/local-provider-photo-storage';
+import { ProviderPhotoStorage } from './storage/provider-photo-storage';
 
 @Module({
   imports: [ServiceCatalogModule],
   controllers: [ServiceProvidersController, ProviderEligibilityController],
-  providers: [ServiceProvidersService],
+  providers: [
+    ServiceProvidersService,
+    ProviderPhotoService,
+    LocalProviderPhotoStorage,
+    { provide: ProviderPhotoStorage, useExisting: LocalProviderPhotoStorage },
+  ],
   exports: [ServiceProvidersService],
 })
 export class ServiceProvidersModule {}
