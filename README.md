@@ -61,6 +61,8 @@ Environment is validated at startup. Secrets must be at least 32 characters and 
 
 Provider photos use local storage by default. `PROVIDER_PHOTO_UPLOAD_DIR` selects the storage directory (default `./uploads/provider-photos`) and `PROVIDER_PHOTO_MAX_BYTES` sets the upload limit (default 5 MiB). Production deployments must mount this directory as persistent storage until an S3-compatible storage implementation is introduced.
 
+Provider invitations use Nodemailer through the Amazon SES SMTP interface. Configure `SMTP_HOST` with the standard regional SES endpoint (for example, `email-smtp.us-east-1.amazonaws.com`), port 587, `SMTP_SECURE=false`, `SMTP_REQUIRE_TLS=true`, SES SMTP credentials in `SMTP_USER` and `SMTP_PASSWORD`, a verified address in `SMTP_FROM`, and the display name in `MAIL_FROM_NAME`. Also set the trusted frontend `APP_PUBLIC_URL` and `INVITATION_EXPIRY_HOURS` (48 by default). Keep all SMTP credentials in the backend environment; do not expose them to the frontend. In SES sandbox mode, recipient identities must also be verified. When delivery fails, onboarding still succeeds and the invitation can be resent from the provider detail page. Branch assignments, qualified services, and photos are configured after provider creation.
+
 `prisma.config.ts` explicitly loads the root `.env`, so Prisma CLI commands use the same `DATABASE_URL` as the application. For the supplied Docker Compose stack, retain the example URL using user `beautyflow` and host port `5433`; a locally installed PostgreSQL user such as `postgres` has different credentials and is not the Compose database.
 
 ## Authentication and tenant resolution
@@ -168,8 +170,11 @@ structured error codes. Swagger is available at `/api/docs` when `SWAGGER_ENABLE
 - Branch catalog: `GET /branches/:branchId/catalog-services`,
   `PUT /branches/:branchId/catalog-services/:serviceId`, and
   `DELETE /branches/:branchId/catalog-services/:serviceId/configuration`.
-- Providers: `POST/GET /service-providers`, `GET/PATCH /service-providers/:id`, status routes, and
-  qualification `GET`, atomic replacement `PUT`, idempotent add `POST`, and remove `DELETE` routes.
+- Providers: `POST /service-providers/onboard` creates the login, membership, profile and secure
+  invitation atomically; `POST /service-providers/:id/resend-invitation` replaces an outstanding
+  invitation. Existing profile, status and qualification routes remain available.
+- Invitations: public rate-limited `POST /auth/invitations/validate` and
+  `POST /auth/invitations/accept` routes validate a single-use token and complete account setup.
 - Eligibility: `GET /branches/:branchId/catalog-services/:serviceId/eligible-providers`.
 
 Salon Owners receive all Stage 2 management permissions. Receptionists can read active categories,

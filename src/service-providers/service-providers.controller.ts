@@ -16,6 +16,7 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import type { Response } from 'express';
 import { RequirePermissions } from '../authorization/authorization.decorators';
 import { Permission } from '../authorization/permissions';
@@ -23,6 +24,7 @@ import { CurrentTenant, CurrentUser } from '../common/decorators/current-context
 import type { AuthContext, RequestWithContext } from '../common/types/request-context';
 import {
   CreateServiceProviderDto,
+  OnboardServiceProviderDto,
   ReplaceQualificationsDto,
   ServiceProviderListDto,
   UpdateServiceProviderDto,
@@ -49,6 +51,17 @@ export class ServiceProvidersController {
   ) {
     return this.providers.create(tenantId, dto, actor, request);
   }
+  @Post('onboard')
+  @RequirePermissions(Permission.SERVICE_PROVIDER_CREATE)
+  @ApiOperation({ summary: 'Create or connect a provider login, membership and profile' })
+  onboard(
+    @CurrentTenant() tenantId: string,
+    @Body() dto: OnboardServiceProviderDto,
+    @CurrentUser() actor: AuthContext,
+    @Req() request: RequestWithContext,
+  ) {
+    return this.providers.onboard(tenantId, dto, actor, request);
+  }
   @Get()
   @RequirePermissions(Permission.SERVICE_PROVIDER_READ)
   list(@CurrentUser() actor: AuthContext, @Query() query: ServiceProviderListDto) {
@@ -58,6 +71,17 @@ export class ServiceProvidersController {
   @RequirePermissions(Permission.SERVICE_PROVIDER_CREATE)
   availableMemberships(@CurrentTenant() tenantId: string) {
     return this.providers.availableMemberships(tenantId);
+  }
+  @Post(':providerId/resend-invitation')
+  @Throttle({ default: { limit: process.env.NODE_ENV === 'test' ? 100 : 3, ttl: 60_000 } })
+  @RequirePermissions(Permission.SERVICE_PROVIDER_CREATE)
+  resendInvitation(
+    @CurrentTenant() tenantId: string,
+    @Param('providerId', ParseUUIDPipe) id: string,
+    @CurrentUser() actor: AuthContext,
+    @Req() request: RequestWithContext,
+  ) {
+    return this.providers.resendInvitation(tenantId, id, actor, request);
   }
   @Get(':providerId')
   @RequirePermissions(Permission.SERVICE_PROVIDER_READ)

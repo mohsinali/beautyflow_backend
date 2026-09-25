@@ -8,9 +8,10 @@ import { ServiceProvidersService } from './service-providers.service';
 import { ProviderPhotoService } from './provider-photo.service';
 import { LocalProviderPhotoStorage } from './storage/local-provider-photo-storage';
 import { ProviderPhotoStorage } from './storage/provider-photo-storage';
+import { InvitationsModule } from '../invitations/invitations.module';
 
 @Module({
-  imports: [ServiceCatalogModule],
+  imports: [ServiceCatalogModule, InvitationsModule],
   controllers: [ServiceProvidersController, ProviderEligibilityController],
   providers: [
     ServiceProvidersService,

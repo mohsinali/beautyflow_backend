@@ -3,6 +3,7 @@ import {
   ArrayMaxSize,
   IsArray,
   IsBoolean,
+  IsEmail,
   IsOptional,
   IsString,
   IsUrl,
@@ -26,6 +27,15 @@ export class CreateServiceProviderDto {
   @IsUrl({ protocols: ['https'], require_protocol: true })
   @MaxLength(2048)
   profileImageUrl?: string;
+}
+
+export class OnboardServiceProviderDto {
+  @Transform(trim) @IsEmail() @MaxLength(320) email!: string;
+  @Transform(trim) @IsString() @MinLength(1) @MaxLength(160) displayName!: string;
+  @IsOptional() @Transform(trim) @IsString() @MaxLength(50) phone?: string;
+  @IsOptional() @Transform(trim) @IsString() @MaxLength(120) jobTitle?: string;
+  @IsOptional() @Transform(trim) @IsString() @MaxLength(2000) bio?: string;
+  @IsBoolean() isActive!: boolean;
 }
 
 export class UpdateServiceProviderDto {

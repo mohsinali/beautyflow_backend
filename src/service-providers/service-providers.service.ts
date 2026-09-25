@@ -4,15 +4,24 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { MembershipStatus, Prisma, TenantRole, TenantStatus, UserStatus } from '@prisma/client';
+import {
+  InvitationPurpose,
+  MembershipStatus,
+  Prisma,
+  TenantRole,
+  TenantStatus,
+  UserStatus,
+} from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { cleanText, escapeLikeSearch, normalizeName } from '../common/catalog-values';
 import { pageMeta } from '../common/dto/pagination.dto';
 import type { AuthContext, RequestWithContext } from '../common/types/request-context';
 import { PrismaService } from '../prisma/prisma.service';
+import { InvitationsService } from '../invitations/invitations.service';
 import { ServiceCatalogService } from '../service-catalog/service-catalog.service';
 import {
   CreateServiceProviderDto,
+  OnboardServiceProviderDto,
   ServiceProviderListDto,
   UpdateServiceProviderDto,
 } from './dto/service-provider.dto';
@@ -37,6 +46,11 @@ const providerSelect = {
       branchAssignments: {
         select: { branch: { select: { id: true, name: true, code: true, isActive: true } } },
       },
+      invitations: {
+        orderBy: { createdAt: 'desc' as const },
+        take: 1,
+        select: { deliveryStatus: true, expiresAt: true, usedAt: true, revokedAt: true },
+      },
     },
   },
   qualifications: {
@@ -60,7 +74,190 @@ export class ServiceProvidersService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly catalog: ServiceCatalogService,
+    private readonly invitations: InvitationsService,
   ) {}
+
+  async onboard(
+    tenantId: string,
+    dto: OnboardServiceProviderDto,
+    actor: AuthContext,
+    request: RequestWithContext,
+  ) {
+    const email = dto.email.trim().toLowerCase();
+    try {
+      const result = await this.prisma.$transaction(async (tx) => {
+        let user = await tx.user.findUnique({ where: { email } });
+        let userCreated = false;
+        if (
+          user &&
+          (user.deletedAt ||
+            (user.status !== UserStatus.ACTIVE && user.status !== UserStatus.INVITED))
+        )
+          throw new ConflictException({
+            code: 'USER_REQUIRES_ATTENTION',
+            message: 'The existing account requires administrative attention',
+          });
+        if (!user) {
+          user = await tx.user.create({
+            data: {
+              email,
+              firstName: cleanText(dto.displayName),
+              lastName: '',
+              passwordHash: null,
+              status: UserStatus.INVITED,
+            },
+          });
+          userCreated = true;
+          await this.audit.record(
+            {
+              action: 'USER_INVITED_CREATED',
+              entityType: 'User',
+              entityId: user.id,
+              tenantId,
+              actorUserId: actor.userId,
+              request,
+            },
+            tx,
+          );
+        }
+        let membership = await tx.tenantMembership.findUnique({
+          where: { tenantId_userId: { tenantId, userId: user.id } },
+          include: { providerProfile: { select: { id: true } } },
+        });
+        let membershipCreated = false;
+        if (membership) {
+          if (membership.role !== TenantRole.SERVICE_PROVIDER)
+            throw new ConflictException({
+              code: 'MEMBERSHIP_ROLE_CONFLICT',
+              message: 'This person already has a different role in this salon',
+            });
+          if (membership.status !== MembershipStatus.ACTIVE)
+            throw new ConflictException({
+              code: 'MEMBERSHIP_REQUIRES_ATTENTION',
+              message: 'The existing membership requires administrative attention',
+            });
+          if (membership.providerProfile)
+            throw new ConflictException({
+              code: 'SERVICE_PROVIDER_EXISTS',
+              message: 'A provider profile already exists',
+              providerId: membership.providerProfile.id,
+            });
+        } else {
+          membership = await tx.tenantMembership.create({
+            data: {
+              tenantId,
+              userId: user.id,
+              role: TenantRole.SERVICE_PROVIDER,
+              status: MembershipStatus.ACTIVE,
+            },
+            include: { providerProfile: { select: { id: true } } },
+          });
+          membershipCreated = true;
+          await this.audit.record(
+            {
+              action: 'MEMBERSHIP_CREATED',
+              entityType: 'TenantMembership',
+              entityId: membership.id,
+              tenantId,
+              actorUserId: actor.userId,
+              metadata: { role: TenantRole.SERVICE_PROVIDER, userCreated, branchIds: [] },
+              request,
+            },
+            tx,
+          );
+        }
+        const provider = await tx.serviceProviderProfile.create({
+          data: {
+            tenantId,
+            membershipId: membership.id,
+            displayName: cleanText(dto.displayName),
+            normalizedName: normalizeName(dto.displayName),
+            phone: dto.phone || null,
+            jobTitle: dto.jobTitle || null,
+            bio: dto.bio || null,
+            isActive: dto.isActive,
+          },
+          select: providerSelect,
+        });
+        const invitation = await this.invitations.issue(tx, {
+          userId: user.id,
+          tenantId,
+          membershipId: membership.id,
+          purpose: user.passwordHash
+            ? InvitationPurpose.TENANT_PROVIDER_INVITE
+            : InvitationPurpose.PASSWORD_SETUP,
+          createdById: actor.userId,
+          request,
+        });
+        await this.audit.record(
+          {
+            action: 'SERVICE_PROVIDER_ONBOARDED',
+            entityType: 'ServiceProviderProfile',
+            entityId: provider.id,
+            tenantId,
+            actorUserId: actor.userId,
+            metadata: { userCreated, membershipCreated },
+            request,
+          },
+          tx,
+        );
+        return { provider, invitation, requiresPassword: !user.passwordHash };
+      });
+      const invitationStatus = await this.invitations.deliver(result.invitation);
+      return {
+        provider: this.serialize(result.provider),
+        accountState: result.requiresPassword ? 'INVITATION_REQUIRED' : 'ACCOUNT_ACTIVE',
+        invitationStatus,
+      };
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002')
+        throw new ConflictException({
+          code: 'SERVICE_PROVIDER_CONFLICT',
+          message: 'This provider could not be created because a related record already exists',
+        });
+      throw error;
+    }
+  }
+
+  async resendInvitation(
+    tenantId: string,
+    providerId: string,
+    actor: AuthContext,
+    request: RequestWithContext,
+  ) {
+    const issued = await this.prisma.$transaction(async (tx) => {
+      const provider = await tx.serviceProviderProfile.findFirst({
+        where: { id: providerId, tenantId, deletedAt: null },
+        select: {
+          membership: {
+            select: { id: true, user: { select: { id: true, passwordHash: true, status: true } } },
+          },
+        },
+      });
+      if (!provider)
+        throw this.notFound('SERVICE_PROVIDER_NOT_FOUND', 'Service provider not found');
+      if (
+        provider.membership.user.passwordHash &&
+        provider.membership.user.status === UserStatus.ACTIVE
+      )
+        throw new ConflictException({
+          code: 'INVITATION_NOT_REQUIRED',
+          message: 'This account is already active',
+        });
+      return this.invitations.issue(tx, {
+        userId: provider.membership.user.id,
+        tenantId,
+        membershipId: provider.membership.id,
+        purpose: provider.membership.user.passwordHash
+          ? InvitationPurpose.TENANT_PROVIDER_INVITE
+          : InvitationPurpose.PASSWORD_SETUP,
+        createdById: actor.userId,
+        request,
+        auditAction: 'PROVIDER_INVITATION_RESENT',
+      });
+    });
+    return { invitationStatus: await this.invitations.deliver(issued) };
+  }
 
   async create(
     tenantId: string,
@@ -400,13 +597,30 @@ export class ServiceProvidersService {
         status: MembershipStatus;
         user: { status: UserStatus };
         branchAssignments: Array<{ branch: unknown }>;
+        invitations: Array<{
+          deliveryStatus: string;
+          expiresAt: Date;
+          usedAt: Date | null;
+          revokedAt: Date | null;
+        }>;
       };
       qualifications: Array<{ catalogService: unknown }>;
       isActive: boolean;
     },
   >(item: T) {
     const { membership, qualifications, photoStorageKey, ...profile } = item;
-    const { branchAssignments, user, ...safeMembership } = membership;
+    const { branchAssignments, user, invitations, ...safeMembership } = membership;
+    const invitation = invitations?.[0];
+    const accountStatus =
+      user.status === UserStatus.ACTIVE
+        ? 'ACCOUNT_ACTIVE'
+        : user.status === UserStatus.INACTIVE || user.status === UserStatus.SUSPENDED
+          ? 'ACCOUNT_INACTIVE'
+          : invitation && invitation.expiresAt <= new Date() && !invitation.usedAt
+            ? 'INVITATION_EXPIRED'
+            : invitation?.deliveryStatus === 'SENT'
+              ? 'INVITATION_SENT'
+              : 'INVITATION_PENDING';
     return {
       ...profile,
       photoUrl: photoStorageKey
@@ -414,6 +628,7 @@ export class ServiceProvidersService {
         : profile.profileImageUrl,
       membership: safeMembership,
       user,
+      accountStatus,
       assignedBranches: branchAssignments.map((entry) => entry.branch),
       qualifications: qualifications.map((entry) => entry.catalogService),
       qualifiedServiceCount: qualifications.length,

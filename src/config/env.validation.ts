@@ -30,4 +30,20 @@ export const envSchema = Joi.object({
     .min(1)
     .max(20 * 1024 * 1024)
     .default(5 * 1024 * 1024),
+  SMTP_HOST: Joi.string().hostname().required(),
+  SMTP_PORT: Joi.number().port().valid(587).default(587),
+  SMTP_SECURE: Joi.boolean().valid(false).default(false),
+  SMTP_REQUIRE_TLS: Joi.boolean().valid(true).default(true),
+  SMTP_USER: Joi.string().trim().required(),
+  SMTP_PASSWORD: Joi.string().required(),
+  SMTP_FROM: Joi.string().email().required(),
+  MAIL_FROM_NAME: Joi.string().trim().min(1).required(),
+  APP_PUBLIC_URL: Joi.string()
+    .uri({ scheme: ['http', 'https'] })
+    .when('NODE_ENV', {
+      is: 'production',
+      then: Joi.string().uri().required(),
+      otherwise: Joi.string().uri().default('http://localhost:3001'),
+    }),
+  INVITATION_EXPIRY_HOURS: Joi.number().integer().min(1).max(168).default(48),
 }).unknown(true);

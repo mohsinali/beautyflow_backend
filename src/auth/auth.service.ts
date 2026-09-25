@@ -53,6 +53,7 @@ export class AuthService {
     });
     if (
       !user ||
+      !user.passwordHash ||
       !(await bcrypt.compare(dto.password, user.passwordHash)) ||
       user.status !== UserStatus.ACTIVE
     ) {

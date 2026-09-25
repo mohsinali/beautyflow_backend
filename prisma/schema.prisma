@@ -42,6 +42,16 @@ enum MembershipStatus {
   INACTIVE
 }
 
+enum InvitationPurpose {
+  PASSWORD_SETUP
+  TENANT_PROVIDER_INVITE
+}
+
+enum InvitationDeliveryStatus {
+  PENDING
+  SENT
+}
+
 model Tenant {
   id                 String                   @id @default(uuid()) @db.Uuid
   name               String
@@ -63,6 +73,7 @@ model Tenant {
   branchServices     BranchService[]
   providerProfiles   ServiceProviderProfile[]
   providerServices   ProviderService[]
+  invitations        AccountInvitation[]
 
   @@index([status, deletedAt])
 }
@@ -92,20 +103,22 @@ model Branch {
 }
 
 model User {
-  id              String             @id @default(uuid()) @db.Uuid
-  email           String             @unique
-  firstName       String
-  lastName        String
-  passwordHash    String
-  status          UserStatus         @default(ACTIVE)
-  platformRole    PlatformRole?
-  lastLoginAt     DateTime?          @db.Timestamptz(3)
-  createdAt       DateTime           @default(now()) @db.Timestamptz(3)
-  updatedAt       DateTime           @updatedAt @db.Timestamptz(3)
-  deletedAt       DateTime?          @db.Timestamptz(3)
-  memberships     TenantMembership[]
-  refreshSessions RefreshSession[]
-  auditLogs       AuditLog[]         @relation("AuditActor")
+  id                 String              @id @default(uuid()) @db.Uuid
+  email              String              @unique
+  firstName          String
+  lastName           String
+  passwordHash       String?
+  status             UserStatus          @default(ACTIVE)
+  platformRole       PlatformRole?
+  lastLoginAt        DateTime?           @db.Timestamptz(3)
+  createdAt          DateTime            @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime            @updatedAt @db.Timestamptz(3)
+  deletedAt          DateTime?           @db.Timestamptz(3)
+  memberships        TenantMembership[]
+  refreshSessions    RefreshSession[]
+  auditLogs          AuditLog[]          @relation("AuditActor")
+  invitations        AccountInvitation[] @relation("InvitationUser")
+  createdInvitations AccountInvitation[] @relation("InvitationCreator")
 
   @@index([status, deletedAt])
 }
@@ -122,11 +135,35 @@ model TenantMembership {
   user              User                    @relation(fields: [userId], references: [id], onDelete: Restrict)
   branchAssignments MembershipBranch[]
   providerProfile   ServiceProviderProfile?
+  invitations       AccountInvitation[]
 
   @@unique([tenantId, userId])
   @@unique([id, tenantId])
   @@index([tenantId, status, role])
   @@index([userId, status])
+}
+
+model AccountInvitation {
+  id             String                   @id @default(uuid()) @db.Uuid
+  userId         String                   @db.Uuid
+  tenantId       String                   @db.Uuid
+  membershipId   String                   @db.Uuid
+  purpose        InvitationPurpose
+  tokenHash      String                   @unique @db.VarChar(64)
+  activeKey      String?                  @unique @db.VarChar(255)
+  expiresAt      DateTime                 @db.Timestamptz(3)
+  usedAt         DateTime?                @db.Timestamptz(3)
+  revokedAt      DateTime?                @db.Timestamptz(3)
+  deliveryStatus InvitationDeliveryStatus @default(PENDING)
+  createdAt      DateTime                 @default(now()) @db.Timestamptz(3)
+  createdById    String?                  @db.Uuid
+  user           User                     @relation("InvitationUser", fields: [userId], references: [id], onDelete: Cascade)
+  tenant         Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  membership     TenantMembership         @relation(fields: [membershipId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  createdBy      User?                    @relation("InvitationCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([membershipId, createdAt])
+  @@index([expiresAt, usedAt, revokedAt])
 }
 
 model MembershipBranch {

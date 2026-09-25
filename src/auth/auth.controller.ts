@@ -7,11 +7,16 @@ import type { AuthContext, RequestWithContext } from '../common/types/request-co
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { RefreshDto } from './dto/refresh.dto';
+import { AcceptInvitationDto, ValidateInvitationDto } from '../invitations/dto/invitation.dto';
+import { InvitationsService } from '../invitations/invitations.service';
 
 @ApiTags('auth')
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly auth: AuthService) {}
+  constructor(
+    private readonly auth: AuthService,
+    private readonly invitations: InvitationsService,
+  ) {}
   @Public()
   @Throttle({ default: { limit: process.env.NODE_ENV === 'test' ? 100 : 5, ttl: 60_000 } })
   @Post('login')
@@ -24,6 +29,20 @@ export class AuthController {
   @Post('refresh')
   refresh(@Body() dto: RefreshDto, @Req() request: RequestWithContext) {
     return this.auth.refresh(dto.refreshToken, request);
+  }
+
+  @Public()
+  @Throttle({ default: { limit: process.env.NODE_ENV === 'test' ? 100 : 10, ttl: 60_000 } })
+  @Post('invitations/validate')
+  validateInvitation(@Body() dto: ValidateInvitationDto) {
+    return this.invitations.validate(dto.token);
+  }
+
+  @Public()
+  @Throttle({ default: { limit: process.env.NODE_ENV === 'test' ? 100 : 5, ttl: 60_000 } })
+  @Post('invitations/accept')
+  acceptInvitation(@Body() dto: AcceptInvitationDto, @Req() request: RequestWithContext) {
+    return this.invitations.accept(dto.token, dto.password, dto.confirmPassword, request);
   }
 
   @ApiBearerAuth()
