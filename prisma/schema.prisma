@@ -74,6 +74,7 @@ model Tenant {
   providerProfiles   ServiceProviderProfile[]
   providerServices   ProviderService[]
   invitations        AccountInvitation[]
+  customers          Customer[]
 
   @@index([status, deletedAt])
 }
@@ -96,6 +97,7 @@ model Branch {
   membershipBranches MembershipBranch[]
   auditLogs          AuditLog[]
   branchServices     BranchService[]
+  preferredCustomers Customer[]
 
   @@unique([tenantId, code])
   @@unique([id, tenantId])
@@ -325,4 +327,26 @@ model ProviderService {
   @@unique([providerProfileId, catalogServiceId])
   @@index([tenantId, catalogServiceId])
   @@index([tenantId, providerProfileId])
+}
+
+model Customer {
+  id                String    @id @default(uuid()) @db.Uuid
+  tenantId          String    @db.Uuid
+  name              String    @db.VarChar(160)
+  normalizedName    String    @db.VarChar(160)
+  phone             String?   @db.VarChar(50)
+  normalizedPhone   String?   @db.VarChar(50)
+  notes             String?   @db.VarChar(2000)
+  preferredBranchId String?   @db.Uuid
+  isActive          Boolean   @default(true)
+  createdAt         DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime  @updatedAt @db.Timestamptz(3)
+  deletedAt         DateTime? @db.Timestamptz(3)
+  tenant            Tenant    @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  preferredBranch   Branch?   @relation(fields: [preferredBranchId, tenantId], references: [id, tenantId], onDelete: Restrict)
+
+  @@unique([id, tenantId])
+  @@index([tenantId, isActive, normalizedName])
+  @@index([tenantId, normalizedPhone])
+  @@index([preferredBranchId, tenantId])
 }

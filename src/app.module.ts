@@ -20,6 +20,7 @@ import { TenantsModule } from './tenants/tenants.module';
 import { UsersModule } from './users/users.module';
 import { ServiceCatalogModule } from './service-catalog/service-catalog.module';
 import { ServiceProvidersModule } from './service-providers/service-providers.module';
+import { CustomersModule } from './customers/customers.module';
 
 @Module({
   imports: [
@@ -37,6 +38,7 @@ import { ServiceProvidersModule } from './service-providers/service-providers.mo
     HealthModule,
     ServiceCatalogModule,
     ServiceProvidersModule,
+    CustomersModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },
