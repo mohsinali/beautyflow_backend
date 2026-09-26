@@ -4,6 +4,7 @@ import {
   IsArray,
   IsBoolean,
   IsEmail,
+  IsIn,
   IsOptional,
   IsString,
   IsUrl,
@@ -54,6 +55,16 @@ export class ServiceProviderListDto extends PaginationDto {
   @IsOptional() @IsUUID() branchId?: string;
   @IsOptional() @IsUUID() catalogServiceId?: string;
   @IsOptional() @Transform(boolean) @IsBoolean() isActive?: boolean;
+}
+
+export class ServiceProviderInvitationListDto extends PaginationDto {
+  @IsOptional()
+  @IsIn(['PENDING', 'EXPIRED', 'CANCELLED', 'ACCEPTED'])
+  status?: 'PENDING' | 'EXPIRED' | 'CANCELLED' | 'ACCEPTED';
+}
+
+export class UpdateServiceProviderInvitationEmailDto {
+  @Transform(trim) @IsEmail() @MaxLength(320) email!: string;
 }
 
 export class ReplaceQualificationsDto {

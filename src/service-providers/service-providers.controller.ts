@@ -26,7 +26,9 @@ import {
   CreateServiceProviderDto,
   OnboardServiceProviderDto,
   ReplaceQualificationsDto,
+  ServiceProviderInvitationListDto,
   ServiceProviderListDto,
+  UpdateServiceProviderInvitationEmailDto,
   UpdateServiceProviderDto,
 } from './dto/service-provider.dto';
 import { ServiceProvidersService } from './service-providers.service';
@@ -71,6 +73,46 @@ export class ServiceProvidersController {
   @RequirePermissions(Permission.SERVICE_PROVIDER_CREATE)
   availableMemberships(@CurrentTenant() tenantId: string) {
     return this.providers.availableMemberships(tenantId);
+  }
+  @Get('invitations')
+  @RequirePermissions(Permission.SERVICE_PROVIDER_CREATE)
+  listInvitations(
+    @CurrentTenant() tenantId: string,
+    @Query() query: ServiceProviderInvitationListDto,
+  ) {
+    return this.providers.listInvitations(tenantId, query);
+  }
+  @Post('invitations/:invitationId/resend')
+  @Throttle({ default: { limit: process.env.NODE_ENV === 'test' ? 100 : 3, ttl: 60_000 } })
+  @RequirePermissions(Permission.SERVICE_PROVIDER_CREATE)
+  resendManagedInvitation(
+    @CurrentTenant() tenantId: string,
+    @Param('invitationId', ParseUUIDPipe) id: string,
+    @CurrentUser() actor: AuthContext,
+    @Req() request: RequestWithContext,
+  ) {
+    return this.providers.resendManagedInvitation(tenantId, id, actor, request);
+  }
+  @Patch('invitations/:invitationId/email')
+  @RequirePermissions(Permission.SERVICE_PROVIDER_CREATE)
+  updateInvitationEmail(
+    @CurrentTenant() tenantId: string,
+    @Param('invitationId', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateServiceProviderInvitationEmailDto,
+    @CurrentUser() actor: AuthContext,
+    @Req() request: RequestWithContext,
+  ) {
+    return this.providers.updateInvitationEmail(tenantId, id, dto, actor, request);
+  }
+  @Post('invitations/:invitationId/cancel')
+  @RequirePermissions(Permission.SERVICE_PROVIDER_CREATE)
+  cancelInvitation(
+    @CurrentTenant() tenantId: string,
+    @Param('invitationId', ParseUUIDPipe) id: string,
+    @CurrentUser() actor: AuthContext,
+    @Req() request: RequestWithContext,
+  ) {
+    return this.providers.cancelInvitation(tenantId, id, actor, request);
   }
   @Post(':providerId/resend-invitation')
   @Throttle({ default: { limit: process.env.NODE_ENV === 'test' ? 100 : 3, ttl: 60_000 } })

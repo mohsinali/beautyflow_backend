@@ -22,7 +22,9 @@ import { ServiceCatalogService } from '../service-catalog/service-catalog.servic
 import {
   CreateServiceProviderDto,
   OnboardServiceProviderDto,
+  ServiceProviderInvitationListDto,
   ServiceProviderListDto,
+  UpdateServiceProviderInvitationEmailDto,
   UpdateServiceProviderDto,
 } from './dto/service-provider.dto';
 
@@ -257,6 +259,225 @@ export class ServiceProvidersService {
       });
     });
     return { invitationStatus: await this.invitations.deliver(issued) };
+  }
+
+  async listInvitations(tenantId: string, query: ServiceProviderInvitationListDto) {
+    const now = new Date();
+    const statusWhere: Prisma.AccountInvitationWhereInput =
+      query.status === 'ACCEPTED'
+        ? { usedAt: { not: null } }
+        : query.status === 'CANCELLED'
+          ? { revokedAt: { not: null }, usedAt: null }
+          : query.status === 'EXPIRED'
+            ? { expiresAt: { lte: now }, usedAt: null, revokedAt: null }
+            : query.status === 'PENDING'
+              ? { expiresAt: { gt: now }, usedAt: null, revokedAt: null }
+              : {};
+    const where: Prisma.AccountInvitationWhereInput = {
+      tenantId,
+      membership: { role: TenantRole.SERVICE_PROVIDER, providerProfile: { isNot: null } },
+      ...statusWhere,
+    };
+    const [items, total] = await this.prisma.$transaction([
+      this.prisma.accountInvitation.findMany({
+        where,
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        skip: (query.page - 1) * query.pageSize,
+        take: query.pageSize,
+        select: {
+          id: true,
+          createdAt: true,
+          expiresAt: true,
+          usedAt: true,
+          revokedAt: true,
+          deliveryStatus: true,
+          user: { select: { email: true } },
+          membership: { select: { providerProfile: { select: { displayName: true } } } },
+        },
+      }),
+      this.prisma.accountInvitation.count({ where }),
+    ]);
+    return {
+      items: items.map((item) => ({
+        id: item.id,
+        name: item.membership.providerProfile?.displayName ?? '',
+        email: item.user.email,
+        status: item.usedAt
+          ? 'ACCEPTED'
+          : item.revokedAt
+            ? 'CANCELLED'
+            : item.expiresAt <= now
+              ? 'EXPIRED'
+              : 'PENDING',
+        deliveryStatus: item.deliveryStatus,
+        invitedAt: item.createdAt,
+        expiresAt: item.expiresAt,
+      })),
+      meta: pageMeta(total, query.page, query.pageSize),
+    };
+  }
+
+  async resendManagedInvitation(
+    tenantId: string,
+    invitationId: string,
+    actor: AuthContext,
+    request: RequestWithContext,
+  ) {
+    const issued = await this.prisma.$transaction(async (tx) => {
+      const invitation = await this.managedInvitation(tx, tenantId, invitationId);
+      this.assertInvitationActionable(invitation);
+      return this.invitations.issue(tx, {
+        userId: invitation.userId,
+        tenantId,
+        membershipId: invitation.membershipId,
+        purpose: invitation.user.passwordHash
+          ? InvitationPurpose.TENANT_PROVIDER_INVITE
+          : InvitationPurpose.PASSWORD_SETUP,
+        createdById: actor.userId,
+        request,
+        auditAction: 'PROVIDER_INVITATION_RESENT',
+      });
+    });
+    return { invitationStatus: await this.invitations.deliver(issued) };
+  }
+
+  async updateInvitationEmail(
+    tenantId: string,
+    invitationId: string,
+    dto: UpdateServiceProviderInvitationEmailDto,
+    actor: AuthContext,
+    request: RequestWithContext,
+  ) {
+    const email = dto.email.toLowerCase();
+    const issued = await this.prisma.$transaction(async (tx) => {
+      const invitation = await this.managedInvitation(tx, tenantId, invitationId);
+      this.assertInvitationActionable(invitation);
+      if (invitation.user.email === email)
+        throw new ConflictException({
+          code: 'INVITATION_EMAIL_UNCHANGED',
+          message: 'The new email must be different',
+        });
+      let target = await tx.user.findUnique({ where: { email } });
+      if (
+        target?.deletedAt ||
+        (target && target.status !== UserStatus.ACTIVE && target.status !== UserStatus.INVITED)
+      )
+        throw new ConflictException({
+          code: 'USER_REQUIRES_ATTENTION',
+          message: 'The existing account requires administrative attention',
+        });
+      if (target) {
+        const conflict = await tx.tenantMembership.findUnique({
+          where: { tenantId_userId: { tenantId, userId: target.id } },
+        });
+        if (conflict)
+          throw new ConflictException({
+            code: 'INVITATION_EMAIL_EXISTS',
+            message: 'This email already belongs to a member of this salon',
+          });
+      } else {
+        const profile = invitation.membership.providerProfile;
+        const [firstName = profile!.displayName, ...rest] = profile!.displayName
+          .trim()
+          .split(/\s+/);
+        target = await tx.user.create({
+          data: {
+            email,
+            firstName,
+            lastName: rest.join(' '),
+            status: UserStatus.INVITED,
+          },
+        });
+      }
+      await tx.accountInvitation.updateMany({
+        where: { membershipId: invitation.membershipId, usedAt: null, revokedAt: null },
+        data: { revokedAt: new Date(), activeKey: null },
+      });
+      await tx.tenantMembership.update({
+        where: { id: invitation.membershipId },
+        data: { userId: target.id },
+      });
+      return this.invitations.issue(tx, {
+        userId: target.id,
+        tenantId,
+        membershipId: invitation.membershipId,
+        purpose: target.passwordHash
+          ? InvitationPurpose.TENANT_PROVIDER_INVITE
+          : InvitationPurpose.PASSWORD_SETUP,
+        createdById: actor.userId,
+        request,
+        auditAction: 'PROVIDER_INVITATION_EMAIL_UPDATED',
+      });
+    });
+    return { invitationStatus: await this.invitations.deliver(issued) };
+  }
+
+  async cancelInvitation(
+    tenantId: string,
+    invitationId: string,
+    actor: AuthContext,
+    request: RequestWithContext,
+  ) {
+    await this.prisma.$transaction(async (tx) => {
+      const invitation = await this.managedInvitation(tx, tenantId, invitationId);
+      this.assertInvitationActionable(invitation, false);
+      const cancelled = await tx.accountInvitation.updateMany({
+        where: { id: invitationId, tenantId, usedAt: null, revokedAt: null },
+        data: { revokedAt: new Date(), activeKey: null },
+      });
+      if (cancelled.count !== 1)
+        throw new ConflictException({
+          code: 'INVITATION_NOT_PENDING',
+          message: 'Invitation is not pending',
+        });
+      await this.audit.record(
+        {
+          action: 'PROVIDER_INVITATION_CANCELLED',
+          entityType: 'AccountInvitation',
+          entityId: invitationId,
+          tenantId,
+          actorUserId: actor.userId,
+          metadata: { membershipId: invitation.membershipId },
+          request,
+        },
+        tx,
+      );
+    });
+    return { cancelled: true };
+  }
+
+  private managedInvitation(tx: Prisma.TransactionClient, tenantId: string, invitationId: string) {
+    return tx.accountInvitation
+      .findFirst({
+        where: { id: invitationId, tenantId, membership: { role: TenantRole.SERVICE_PROVIDER } },
+        include: { user: true, membership: { include: { providerProfile: true } } },
+      })
+      .then((invitation) => {
+        if (!invitation?.membership.providerProfile)
+          throw this.notFound('INVITATION_NOT_FOUND', 'Invitation not found');
+        return invitation;
+      });
+  }
+
+  private assertInvitationActionable(
+    invitation: { usedAt: Date | null; revokedAt: Date | null; expiresAt: Date },
+    allowExpired = true,
+  ) {
+    if (invitation.usedAt)
+      throw new ConflictException({
+        code: 'INVITATION_ALREADY_ACCEPTED',
+        message: 'Invitation has already been accepted',
+      });
+    if (invitation.revokedAt)
+      throw new ConflictException({
+        code: 'INVITATION_NOT_PENDING',
+        message: 'Invitation is not pending',
+      });
+    if (!allowExpired && invitation.expiresAt <= new Date())
+      throw new ConflictException({
+        code: 'INVITATION_EXPIRED',
+        message: 'Invitation has expired',
+      });
   }
 
   async create(
