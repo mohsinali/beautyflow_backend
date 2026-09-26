@@ -587,6 +587,41 @@ export class ServiceProvidersService {
     return items.map((item) => this.serialize(item));
   }
 
+  async isEligible(
+    tenantId: string,
+    branchId: string,
+    serviceId: string,
+    providerId: string,
+  ): Promise<boolean> {
+    if (!(await this.catalog.isEffectivelyAvailable(tenantId, branchId, serviceId))) return false;
+    const provider = await this.prisma.serviceProviderProfile.findFirst({
+      where: {
+        id: providerId,
+        tenantId,
+        isActive: true,
+        deletedAt: null,
+        membership: {
+          status: MembershipStatus.ACTIVE,
+          user: { status: UserStatus.ACTIVE, deletedAt: null },
+          tenant: { status: TenantStatus.ACTIVE, deletedAt: null },
+          branchAssignments: { some: { branchId, branch: { isActive: true, deletedAt: null } } },
+        },
+        qualifications: {
+          some: {
+            catalogServiceId: serviceId,
+            catalogService: {
+              isActive: true,
+              deletedAt: null,
+              category: { isActive: true, deletedAt: null },
+            },
+          },
+        },
+      },
+      select: { id: true },
+    });
+    return Boolean(provider);
+  }
+
   private serialize<
     T extends {
       id: string;

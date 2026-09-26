@@ -21,6 +21,7 @@ import { UsersModule } from './users/users.module';
 import { ServiceCatalogModule } from './service-catalog/service-catalog.module';
 import { ServiceProvidersModule } from './service-providers/service-providers.module';
 import { CustomersModule } from './customers/customers.module';
+import { VisitsModule } from './visits/visits.module';
 
 @Module({
   imports: [
@@ -39,6 +40,7 @@ import { CustomersModule } from './customers/customers.module';
     ServiceCatalogModule,
     ServiceProvidersModule,
     CustomersModule,
+    VisitsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

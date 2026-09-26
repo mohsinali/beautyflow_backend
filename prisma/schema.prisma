@@ -52,6 +52,20 @@ enum InvitationDeliveryStatus {
   SENT
 }
 
+enum VisitStatus {
+  DRAFT
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum VisitItemStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
 model Tenant {
   id                 String                   @id @default(uuid()) @db.Uuid
   name               String
@@ -75,6 +89,8 @@ model Tenant {
   providerServices   ProviderService[]
   invitations        AccountInvitation[]
   customers          Customer[]
+  visits             Visit[]
+  visitItems         VisitItem[]
 
   @@index([status, deletedAt])
 }
@@ -98,6 +114,7 @@ model Branch {
   auditLogs          AuditLog[]
   branchServices     BranchService[]
   preferredCustomers Customer[]
+  visits             Visit[]
 
   @@unique([tenantId, code])
   @@unique([id, tenantId])
@@ -121,6 +138,7 @@ model User {
   auditLogs          AuditLog[]          @relation("AuditActor")
   invitations        AccountInvitation[] @relation("InvitationUser")
   createdInvitations AccountInvitation[] @relation("InvitationCreator")
+  createdVisits      Visit[]             @relation("VisitCreator")
 
   @@index([status, deletedAt])
 }
@@ -264,6 +282,7 @@ model CatalogService {
   category         ServiceCategory   @relation(fields: [categoryId, tenantId], references: [id, tenantId], onDelete: Restrict)
   branchServices   BranchService[]
   providerServices ProviderService[]
+  visitItems       VisitItem[]
 
   @@unique([id, tenantId])
   @@unique([tenantId, code])
@@ -307,6 +326,8 @@ model ServiceProviderProfile {
   tenant          Tenant            @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   membership      TenantMembership  @relation(fields: [membershipId, tenantId], references: [id, tenantId], onDelete: Restrict)
   qualifications  ProviderService[]
+  defaultVisits   Visit[]
+  visitItems      VisitItem[]
 
   @@unique([id, tenantId])
   @@unique([membershipId])
@@ -344,9 +365,65 @@ model Customer {
   deletedAt         DateTime? @db.Timestamptz(3)
   tenant            Tenant    @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   preferredBranch   Branch?   @relation(fields: [preferredBranchId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  visits            Visit[]
 
   @@unique([id, tenantId])
   @@index([tenantId, isActive, normalizedName])
   @@index([tenantId, normalizedPhone])
   @@index([preferredBranchId, tenantId])
+}
+
+model Visit {
+  id                String                  @id @default(uuid()) @db.Uuid
+  tenantId          String                  @db.Uuid
+  branchId          String                  @db.Uuid
+  customerId        String                  @db.Uuid
+  defaultProviderId String?                 @db.Uuid
+  status            VisitStatus             @default(DRAFT)
+  subtotal          Decimal                 @db.Decimal(12, 2)
+  discountAmount    Decimal                 @db.Decimal(12, 2)
+  total             Decimal                 @db.Decimal(12, 2)
+  notes             String?                 @db.VarChar(2000)
+  startedAt         DateTime?               @db.Timestamptz(3)
+  completedAt       DateTime?               @db.Timestamptz(3)
+  cancelledAt       DateTime?               @db.Timestamptz(3)
+  createdByUserId   String                  @db.Uuid
+  createdAt         DateTime                @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime                @updatedAt @db.Timestamptz(3)
+  tenant            Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  branch            Branch                  @relation(fields: [branchId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  customer          Customer                @relation(fields: [customerId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  defaultProvider   ServiceProviderProfile? @relation(fields: [defaultProviderId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  createdBy         User                    @relation("VisitCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  items             VisitItem[]
+
+  @@unique([id, tenantId])
+  @@index([tenantId, branchId, status, createdAt])
+  @@index([tenantId, customerId, createdAt])
+}
+
+model VisitItem {
+  id                  String                  @id @default(uuid()) @db.Uuid
+  tenantId            String                  @db.Uuid
+  visitId             String                  @db.Uuid
+  catalogServiceId    String                  @db.Uuid
+  providerId          String?                 @db.Uuid
+  serviceNameSnapshot String                  @db.VarChar(160)
+  originalPrice       Decimal                 @db.Decimal(12, 2)
+  chargedPrice        Decimal                 @db.Decimal(12, 2)
+  discountAmount      Decimal                 @db.Decimal(12, 2)
+  status              VisitItemStatus         @default(PENDING)
+  startedAt           DateTime?               @db.Timestamptz(3)
+  completedAt         DateTime?               @db.Timestamptz(3)
+  cancelledAt         DateTime?               @db.Timestamptz(3)
+  createdAt           DateTime                @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime                @updatedAt @db.Timestamptz(3)
+  tenant              Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  visit               Visit                   @relation(fields: [visitId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  catalogService      CatalogService          @relation(fields: [catalogServiceId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  provider            ServiceProviderProfile? @relation(fields: [providerId, tenantId], references: [id, tenantId], onDelete: Restrict)
+
+  @@unique([id, tenantId])
+  @@index([tenantId, visitId, status])
+  @@index([tenantId, providerId, status])
 }
