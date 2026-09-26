@@ -17,6 +17,7 @@ import { CurrentUser } from '../common/decorators/current-context.decorators';
 import type { AuthContext, RequestWithContext } from '../common/types/request-context';
 import {
   CreateVisitDto,
+  MyWorkDto,
   UpdateVisitDto,
   UpdateVisitItemDto,
   VisitItemInputDto,
@@ -46,6 +47,15 @@ export class VisitsController {
     @Req() request: RequestWithContext,
   ) {
     return this.visits.list(actor, request.branchId, query);
+  }
+  @Get('my-work')
+  @RequirePermissions(Permission.VISIT_ITEM_READ_OWN)
+  myWork(
+    @CurrentUser() actor: AuthContext,
+    @Query() query: MyWorkDto,
+    @Req() request: RequestWithContext,
+  ) {
+    return this.visits.myWork(actor, request.branchId, query.date);
   }
   @Get(':visitId')
   @RequirePermissions(Permission.VISIT_READ)

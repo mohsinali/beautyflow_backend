@@ -42,6 +42,7 @@ export enum Permission {
   VISIT_ITEM_START = 'visit-item:start',
   VISIT_ITEM_COMPLETE = 'visit-item:complete',
   VISIT_ITEM_CANCEL = 'visit-item:cancel',
+  VISIT_ITEM_READ_OWN = 'visit-item:read-own',
   VISIT_OVERRIDE_PRICE = 'visit:override-price',
   VISIT_APPLY_DISCOUNT = 'visit:apply-discount',
   PLATFORM_TENANT_CREATE = 'platform.tenant.create',
@@ -82,6 +83,9 @@ export const TENANT_ROLE_PERMISSIONS: Record<TenantRole, readonly Permission[]> 
     Permission.SERVICE_CATEGORY_READ,
     Permission.CATALOG_SERVICE_READ,
     Permission.SERVICE_PROVIDER_READ,
+    Permission.VISIT_ITEM_READ_OWN,
+    Permission.VISIT_ITEM_START,
+    Permission.VISIT_ITEM_COMPLETE,
   ],
 };
 

@@ -137,6 +137,37 @@ export class VisitsService {
     return this.serialize(visit);
   }
 
+  async myWork(auth: AuthContext, branchId: string | undefined, date: string) {
+    const tenantId = this.tenant(auth);
+    if (!branchId) throw this.error('VISIT_BRANCH_REQUIRED', 'Select an active branch');
+    await this.requireBranch(auth, branchId);
+    const provider = await this.currentProvider(auth);
+    const branch = await this.prisma.branch.findFirstOrThrow({
+      where: { id: branchId, tenantId },
+      select: { timezone: true, tenant: { select: { timezone: true } } },
+    });
+    const [start, end] = this.zonedDayBounds(date, branch.timezone ?? branch.tenant.timezone);
+    return this.prisma.visitItem.findMany({
+      where: {
+        tenantId,
+        providerId: provider.id,
+        createdAt: { gte: start, lt: end },
+        visit: { branchId },
+      },
+      select: {
+        id: true,
+        visitId: true,
+        serviceNameSnapshot: true,
+        status: true,
+        startedAt: true,
+        completedAt: true,
+        createdAt: true,
+        visit: { select: { customer: { select: { id: true, name: true } } } },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+  }
+
   async update(auth: AuthContext, id: string, dto: UpdateVisitDto, request: RequestWithContext) {
     const visit = await this.requireEditable(auth, id);
     if (dto.customerId) await this.requireCustomer(visit.tenantId, dto.customerId);
@@ -369,6 +400,13 @@ export class VisitsService {
     request: RequestWithContext,
   ) {
     const visit = await this.requireVisit(auth, id);
+    if (auth.tenantRole === TenantRole.SERVICE_PROVIDER) {
+      const provider = await this.currentProvider(auth);
+      const assigned = visit.items.some(
+        (value) => value.id === itemId && value.providerId === provider.id,
+      );
+      if (!assigned) throw this.notFound('VISIT_ITEM_NOT_FOUND', 'Visit item not found');
+    }
     if (visit.status !== VisitStatus.IN_PROGRESS) throw this.invalidStatus();
     const item = visit.items.find((value) => value.id === itemId);
     if (!item) throw this.notFound('VISIT_ITEM_NOT_FOUND', 'Visit item not found');
@@ -502,6 +540,63 @@ export class VisitsService {
     });
     if (!value)
       throw this.error('VISIT_PROVIDER_NOT_ELIGIBLE', 'Provider is not active at this branch');
+  }
+  private async currentProvider(auth: AuthContext) {
+    const tenantId = this.tenant(auth);
+    if (!auth.membershipId)
+      throw this.notFound(
+        'SERVICE_PROVIDER_PROFILE_NOT_FOUND',
+        'Service provider profile not found',
+      );
+    const provider = await this.prisma.serviceProviderProfile.findFirst({
+      where: {
+        tenantId,
+        membershipId: auth.membershipId,
+        isActive: true,
+        deletedAt: null,
+      },
+      select: { id: true },
+    });
+    if (!provider)
+      throw this.notFound(
+        'SERVICE_PROVIDER_PROFILE_NOT_FOUND',
+        'Service provider profile not found',
+      );
+    return provider;
+  }
+  private zonedDayBounds(date: string, timeZone: string): [Date, Date] {
+    const start = this.zonedDateToUtc(`${date}T00:00:00`, timeZone);
+    const next = new Date(`${date}T00:00:00Z`);
+    next.setUTCDate(next.getUTCDate() + 1);
+    const nextDate = next.toISOString().slice(0, 10);
+    return [start, this.zonedDateToUtc(`${nextDate}T00:00:00`, timeZone)];
+  }
+  private zonedDateToUtc(localIso: string, timeZone: string) {
+    const desired = new Date(`${localIso}Z`).getTime();
+    let guess = desired;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hourCycle: 'h23',
+      }).formatToParts(new Date(guess));
+      const value = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+      const represented = Date.UTC(
+        Number(value.year),
+        Number(value.month) - 1,
+        Number(value.day),
+        Number(value.hour),
+        Number(value.minute),
+        Number(value.second),
+      );
+      guess += desired - represented;
+    }
+    return new Date(guess);
   }
   private async requireBranch(auth: AuthContext, id: string) {
     const tenantId = this.tenant(auth);

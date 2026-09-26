@@ -56,3 +56,7 @@ export class VisitListDto extends PaginationDto {
   @IsOptional() @IsDateString() dateFrom?: string;
   @IsOptional() @IsDateString() dateTo?: string;
 }
+
+export class MyWorkDto {
+  @Matches(/^\d{4}-\d{2}-\d{2}$/) date!: string;
+}
