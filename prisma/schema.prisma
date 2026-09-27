@@ -59,6 +59,11 @@ enum VisitStatus {
   CANCELLED
 }
 
+enum PaymentStatus {
+  UNPAID
+  PAID
+}
+
 enum VisitItemStatus {
   PENDING
   IN_PROGRESS
@@ -139,6 +144,7 @@ model User {
   invitations        AccountInvitation[] @relation("InvitationUser")
   createdInvitations AccountInvitation[] @relation("InvitationCreator")
   createdVisits      Visit[]             @relation("VisitCreator")
+  paidVisits         Visit[]             @relation("VisitPaymentRecorder")
 
   @@index([status, deletedAt])
 }
@@ -380,6 +386,7 @@ model Visit {
   customerId        String                  @db.Uuid
   defaultProviderId String?                 @db.Uuid
   status            VisitStatus             @default(DRAFT)
+  paymentStatus     PaymentStatus           @default(UNPAID)
   subtotal          Decimal                 @db.Decimal(12, 2)
   discountAmount    Decimal                 @db.Decimal(12, 2)
   total             Decimal                 @db.Decimal(12, 2)
@@ -387,6 +394,9 @@ model Visit {
   startedAt         DateTime?               @db.Timestamptz(3)
   completedAt       DateTime?               @db.Timestamptz(3)
   cancelledAt       DateTime?               @db.Timestamptz(3)
+  paidAt            DateTime?               @db.Timestamptz(3)
+  paidByUserId      String?                 @db.Uuid
+  paymentNote       String?                 @db.VarChar(1000)
   createdByUserId   String                  @db.Uuid
   createdAt         DateTime                @default(now()) @db.Timestamptz(3)
   updatedAt         DateTime                @updatedAt @db.Timestamptz(3)
@@ -395,6 +405,7 @@ model Visit {
   customer          Customer                @relation(fields: [customerId, tenantId], references: [id, tenantId], onDelete: Restrict)
   defaultProvider   ServiceProviderProfile? @relation(fields: [defaultProviderId, tenantId], references: [id, tenantId], onDelete: Restrict)
   createdBy         User                    @relation("VisitCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  paidBy            User?                   @relation("VisitPaymentRecorder", fields: [paidByUserId], references: [id], onDelete: Restrict)
   items             VisitItem[]
 
   @@unique([id, tenantId])

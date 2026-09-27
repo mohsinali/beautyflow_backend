@@ -1,0 +1,11 @@
+CREATE TYPE "PaymentStatus" AS ENUM ('UNPAID', 'PAID');
+
+ALTER TABLE "Visit"
+ADD COLUMN "paymentStatus" "PaymentStatus" NOT NULL DEFAULT 'UNPAID',
+ADD COLUMN "paidAt" TIMESTAMPTZ(3),
+ADD COLUMN "paidByUserId" UUID,
+ADD COLUMN "paymentNote" VARCHAR(1000);
+
+ALTER TABLE "Visit"
+ADD CONSTRAINT "Visit_paidByUserId_fkey"
+FOREIGN KEY ("paidByUserId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;

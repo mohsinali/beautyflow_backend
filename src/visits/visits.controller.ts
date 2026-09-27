@@ -17,6 +17,7 @@ import { CurrentUser } from '../common/decorators/current-context.decorators';
 import type { AuthContext, RequestWithContext } from '../common/types/request-context';
 import {
   CreateVisitDto,
+  MarkVisitPaidDto,
   MyWorkDto,
   UpdateVisitDto,
   UpdateVisitItemDto,
@@ -129,6 +130,16 @@ export class VisitsController {
     @Req() request: RequestWithContext,
   ) {
     return this.visits.transitionVisit(actor, id, 'cancel', request);
+  }
+  @Post(':visitId/mark-paid')
+  @RequirePermissions(Permission.VISIT_MARK_PAID)
+  markPaid(
+    @CurrentUser() actor: AuthContext,
+    @Param('visitId', ParseUUIDPipe) id: string,
+    @Body() dto: MarkVisitPaidDto,
+    @Req() request: RequestWithContext,
+  ) {
+    return this.visits.markPaid(actor, id, dto, request);
   }
   @Post(':visitId/items/:itemId/start')
   @RequirePermissions(Permission.VISIT_ITEM_START)

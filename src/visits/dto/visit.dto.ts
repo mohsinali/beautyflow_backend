@@ -12,7 +12,7 @@ import {
   MaxLength,
   ValidateNested,
 } from 'class-validator';
-import { VisitStatus } from '@prisma/client';
+import { PaymentStatus, VisitStatus } from '@prisma/client';
 import { PaginationDto } from '../../common/dto/pagination.dto';
 
 const trim = ({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value);
@@ -51,10 +51,15 @@ export class UpdateVisitItemDto {
 
 export class VisitListDto extends PaginationDto {
   @IsOptional() @IsEnum(VisitStatus) status?: VisitStatus;
+  @IsOptional() @IsEnum(PaymentStatus) paymentStatus?: PaymentStatus;
   @IsOptional() @Transform(trim) @IsString() @MaxLength(160) search?: string;
   @IsOptional() @IsUUID() branchId?: string;
   @IsOptional() @IsDateString() dateFrom?: string;
   @IsOptional() @IsDateString() dateTo?: string;
+}
+
+export class MarkVisitPaidDto {
+  @IsOptional() @Transform(trim) @IsString() @MaxLength(1000) paymentNote?: string;
 }
 
 export class MyWorkDto {

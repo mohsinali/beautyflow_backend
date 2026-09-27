@@ -45,6 +45,7 @@ export enum Permission {
   VISIT_ITEM_READ_OWN = 'visit-item:read-own',
   VISIT_OVERRIDE_PRICE = 'visit:override-price',
   VISIT_APPLY_DISCOUNT = 'visit:apply-discount',
+  VISIT_MARK_PAID = 'visit:mark-paid',
   PLATFORM_TENANT_CREATE = 'platform.tenant.create',
   PLATFORM_TENANT_VIEW = 'platform.tenant.view',
   PLATFORM_TENANT_UPDATE = 'platform.tenant.update',
@@ -76,6 +77,7 @@ export const TENANT_ROLE_PERMISSIONS: Record<TenantRole, readonly Permission[]> 
     Permission.VISIT_ITEM_START,
     Permission.VISIT_ITEM_COMPLETE,
     Permission.VISIT_ITEM_CANCEL,
+    Permission.VISIT_MARK_PAID,
   ],
   SERVICE_PROVIDER: [
     Permission.BRANCH_VIEW,

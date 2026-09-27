@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, TenantRole, VisitItemStatus, VisitStatus } from '@prisma/client';
+import { PaymentStatus, Prisma, TenantRole, VisitItemStatus, VisitStatus } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { pageMeta } from '../common/dto/pagination.dto';
 import type { AuthContext, RequestWithContext } from '../common/types/request-context';
@@ -12,6 +12,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ServiceProvidersService } from '../service-providers/service-providers.service';
 import {
   CreateVisitDto,
+  MarkVisitPaidDto,
   UpdateVisitDto,
   UpdateVisitItemDto,
   VisitItemInputDto,
@@ -27,6 +28,7 @@ const detailInclude = {
     include: { provider: { select: { id: true, displayName: true } } },
     orderBy: { createdAt: 'asc' as const },
   },
+  paidBy: { select: { id: true, firstName: true, lastName: true } },
 } satisfies Prisma.VisitInclude;
 
 @Injectable()
@@ -104,6 +106,7 @@ export class VisitsService {
       tenantId,
       branchId,
       ...(query.status ? { status: query.status } : {}),
+      ...(query.paymentStatus ? { paymentStatus: query.paymentStatus } : {}),
       ...(query.search
         ? { customer: { name: { contains: query.search, mode: 'insensitive' } } }
         : {}),
@@ -452,6 +455,52 @@ export class VisitsService {
           tenantId: visit.tenantId,
           branchId: visit.branchId,
           actorUserId: auth.userId,
+          request,
+        },
+        tx,
+      );
+    });
+    return this.get(auth, id);
+  }
+
+  async markPaid(
+    auth: AuthContext,
+    id: string,
+    dto: MarkVisitPaidDto,
+    request: RequestWithContext,
+  ) {
+    const visit = await this.requireVisit(auth, id);
+    if (visit.status !== VisitStatus.COMPLETED)
+      throw this.error('VISIT_NOT_COMPLETED', 'Only completed visits can be marked as paid');
+    if (visit.paymentStatus === PaymentStatus.PAID)
+      throw this.error('VISIT_ALREADY_PAID', 'Visit has already been marked as paid');
+    const paidAt = new Date();
+    await this.prisma.$transaction(async (tx) => {
+      const result = await tx.visit.updateMany({
+        where: { id, tenantId: visit.tenantId, paymentStatus: PaymentStatus.UNPAID },
+        data: {
+          paymentStatus: PaymentStatus.PAID,
+          paidAt,
+          paidByUserId: auth.userId,
+          paymentNote: dto.paymentNote?.trim() || null,
+        },
+      });
+      if (result.count !== 1)
+        throw this.error('VISIT_ALREADY_PAID', 'Visit has already been marked as paid');
+      await this.audit.record(
+        {
+          action: 'VISIT_MARKED_PAID',
+          entityType: 'Visit',
+          entityId: id,
+          tenantId: visit.tenantId,
+          branchId: visit.branchId,
+          actorUserId: auth.userId,
+          metadata: {
+            total: visit.total.toFixed(2),
+            previousPaymentStatus: PaymentStatus.UNPAID,
+            paymentStatus: PaymentStatus.PAID,
+            paymentNoteSupplied: Boolean(dto.paymentNote?.trim()),
+          },
           request,
         },
         tx,

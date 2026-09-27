@@ -1,9 +1,10 @@
-import { NotFoundException } from '@nestjs/common';
-import { Prisma, TenantRole, VisitItemStatus, VisitStatus } from '@prisma/client';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { PaymentStatus, Prisma, TenantRole, VisitItemStatus, VisitStatus } from '@prisma/client';
+import { Permission, TENANT_ROLE_PERMISSIONS } from '../authorization/permissions';
 import type { AuthContext, RequestWithContext } from '../common/types/request-context';
 import { VisitsService } from './visits.service';
 
-/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access */
 
 const auth: AuthContext = {
   userId: 'user-1',
@@ -24,6 +25,7 @@ const visit = {
   tenantId: 'tenant-1',
   branchId: 'branch-1',
   status: VisitStatus.IN_PROGRESS,
+  paymentStatus: PaymentStatus.UNPAID,
   subtotal: new Prisma.Decimal(20),
   discountAmount: new Prisma.Decimal(0),
   total: new Prisma.Decimal(20),
@@ -66,6 +68,7 @@ function setup() {
     },
     visit: {
       findFirst: jest.fn().mockResolvedValue(visit),
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
     $transaction: jest.fn((callback: (tx: unknown) => unknown): Promise<unknown> =>
       Promise.resolve(callback(transactionTarget.current)),
@@ -120,5 +123,95 @@ describe('VisitsService provider work', () => {
       where: { id: 'item-1' },
       data: { status: VisitItemStatus.COMPLETED, completedAt: expect.any(Date) },
     });
+  });
+});
+
+describe('VisitsService payment recording', () => {
+  const completedVisit = { ...visit, status: VisitStatus.COMPLETED };
+
+  it('records server-authoritative payment metadata and an optional trimmed note', async () => {
+    const { service, prisma } = setup();
+    prisma.visit.findFirst.mockResolvedValue(completedVisit);
+    const before = new Date();
+    await service.markPaid(
+      { ...auth, tenantRole: TenantRole.RECEPTIONIST },
+      visit.id,
+      { paymentNote: '  Cash received  ' },
+      {} as RequestWithContext,
+    );
+    const data = (
+      prisma.visit.updateMany.mock.calls[0][0] as {
+        data: {
+          paymentStatus: PaymentStatus;
+          paidByUserId: string;
+          paymentNote: string | null;
+          paidAt: Date;
+        };
+      }
+    ).data;
+    expect(data).toEqual(
+      expect.objectContaining({
+        paymentStatus: PaymentStatus.PAID,
+        paidByUserId: auth.userId,
+        paymentNote: 'Cash received',
+        paidAt: expect.any(Date),
+      }),
+    );
+    expect(data.paidAt.getTime()).toBeGreaterThanOrEqual(before.getTime());
+  });
+
+  it('stores an omitted payment note as null', async () => {
+    const { service, prisma } = setup();
+    prisma.visit.findFirst.mockResolvedValue(completedVisit);
+    await service.markPaid(auth, visit.id, {}, {} as RequestWithContext);
+    const call = prisma.visit.updateMany.mock.calls[0][0] as {
+      data: { paymentNote: string | null };
+    };
+    expect(call.data.paymentNote).toBeNull();
+  });
+
+  it.each([VisitStatus.DRAFT, VisitStatus.IN_PROGRESS, VisitStatus.CANCELLED])(
+    'rejects a %s visit',
+    async (status) => {
+      const { service, prisma } = setup();
+      prisma.visit.findFirst.mockResolvedValue({ ...visit, status });
+      await expect(
+        service.markPaid(auth, visit.id, {}, {} as RequestWithContext),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.visit.updateMany).not.toHaveBeenCalled();
+    },
+  );
+
+  it('does not overwrite an already paid visit', async () => {
+    const { service, prisma } = setup();
+    prisma.visit.findFirst.mockResolvedValue({
+      ...completedVisit,
+      paymentStatus: PaymentStatus.PAID,
+    });
+    await expect(
+      service.markPaid(auth, visit.id, {}, {} as RequestWithContext),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.visit.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('hides cross-tenant and inaccessible-branch visits as not found', async () => {
+    const { service, prisma } = setup();
+    prisma.visit.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce(completedVisit);
+    await expect(
+      service.markPaid(auth, visit.id, {}, {} as RequestWithContext),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    await expect(
+      service.markPaid(
+        { ...auth, accessibleBranchIds: [] },
+        visit.id,
+        {},
+        {} as RequestWithContext,
+      ),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('grants payment recording to receptionists but not service providers', () => {
+    expect(TENANT_ROLE_PERMISSIONS.RECEPTIONIST).toContain(Permission.VISIT_MARK_PAID);
+    expect(TENANT_ROLE_PERMISSIONS.SERVICE_PROVIDER).not.toContain(Permission.VISIT_MARK_PAID);
   });
 });
