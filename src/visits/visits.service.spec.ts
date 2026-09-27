@@ -126,6 +126,35 @@ describe('VisitsService provider work', () => {
   });
 });
 
+describe('VisitsService receipt detail', () => {
+  it('requests branch contact and timezone fields with the existing visit detail', async () => {
+    const { service, prisma } = setup();
+    await service.get({ ...auth, tenantRole: TenantRole.RECEPTIONIST }, visit.id);
+
+    expect(prisma.visit.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: visit.id, tenantId: auth.tenantId },
+        include: expect.objectContaining({
+          branch: {
+            select: expect.objectContaining({
+              name: true,
+              phone: true,
+              address: true,
+              city: true,
+              timezone: true,
+            }),
+          },
+        }),
+      }),
+    );
+  });
+
+  it('allows receptionists to read visits but not service providers', () => {
+    expect(TENANT_ROLE_PERMISSIONS.RECEPTIONIST).toContain(Permission.VISIT_READ);
+    expect(TENANT_ROLE_PERMISSIONS.SERVICE_PROVIDER).not.toContain(Permission.VISIT_READ);
+  });
+});
+
 describe('VisitsService payment recording', () => {
   const completedVisit = { ...visit, status: VisitStatus.COMPLETED };
 

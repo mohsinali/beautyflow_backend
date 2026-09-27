@@ -21,7 +21,17 @@ import {
 import { calculateVisitTotals, validateItemMoney, validateVisitCompletion } from './visit-rules';
 
 const detailInclude = {
-  branch: { select: { id: true, name: true, code: true } },
+  branch: {
+    select: {
+      id: true,
+      name: true,
+      code: true,
+      phone: true,
+      address: true,
+      city: true,
+      timezone: true,
+    },
+  },
   customer: { select: { id: true, name: true, phone: true } },
   defaultProvider: { select: { id: true, displayName: true } },
   items: {
