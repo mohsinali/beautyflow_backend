@@ -1,4 +1,5 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
 import { Prisma, TenantRole } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { pageMeta, PaginationDto } from '../common/dto/pagination.dto';
@@ -36,7 +37,11 @@ export class BranchesService {
   ) {
     try {
       const branch = await this.prisma.branch.create({
-        data: { tenantId, ...dto, code: dto.code.toUpperCase() },
+        data: {
+          tenantId,
+          ...dto,
+          code: dto.code?.toUpperCase() ?? `BR-${randomUUID().slice(0, 8).toUpperCase()}`,
+        },
         select,
       });
       await this.audit.record({
