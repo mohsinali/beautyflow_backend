@@ -9,6 +9,7 @@ import { BranchContextGuard } from './authorization/branch-context.guard';
 import { JwtAuthGuard } from './authorization/jwt-auth.guard';
 import { PermissionGuard } from './authorization/permission.guard';
 import { BranchesModule } from './branches/branches.module';
+import { HttpLoggerMiddleware } from './common/http-logger.middleware';
 import { RequestIdMiddleware } from './common/request-id.middleware';
 import { ResponseInterceptor } from './common/response.interceptor';
 import { envSchema } from './config/env.validation';
@@ -22,6 +23,7 @@ import { ServiceCatalogModule } from './service-catalog/service-catalog.module';
 import { ServiceProvidersModule } from './service-providers/service-providers.module';
 import { CustomersModule } from './customers/customers.module';
 import { VisitsModule } from './visits/visits.module';
+import { ReportsModule } from './reports/reports.module';
 
 @Module({
   imports: [
@@ -41,6 +43,7 @@ import { VisitsModule } from './visits/visits.module';
     ServiceProvidersModule,
     CustomersModule,
     VisitsModule,
+    ReportsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },
@@ -52,6 +55,6 @@ import { VisitsModule } from './visits/visits.module';
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer): void {
-    consumer.apply(RequestIdMiddleware).forRoutes('{*path}');
+    consumer.apply(RequestIdMiddleware, HttpLoggerMiddleware).forRoutes('{*path}');
   }
 }

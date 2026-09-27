@@ -1,4 +1,11 @@
-import { ArgumentsHost, Catch, ExceptionFilter, HttpException, HttpStatus } from '@nestjs/common';
+import {
+  ArgumentsHost,
+  Catch,
+  ExceptionFilter,
+  HttpException,
+  HttpStatus,
+  Logger,
+} from '@nestjs/common';
 import type { Response } from 'express';
 import type { RequestWithContext } from './types/request-context';
 
@@ -10,12 +17,19 @@ interface ExceptionBody {
 
 @Catch()
 export class HttpExceptionFilter implements ExceptionFilter {
+  private readonly logger = new Logger('ExceptionsHandler');
+
   catch(exception: unknown, host: ArgumentsHost): void {
     const http = host.switchToHttp();
     const response = http.getResponse<Response>();
     const request = http.getRequest<RequestWithContext>();
     const status =
       exception instanceof HttpException ? exception.getStatus() : HttpStatus.INTERNAL_SERVER_ERROR;
+
+    if (status >= 500) {
+      this.logServerError(exception, request);
+    }
+
     const raw = exception instanceof HttpException ? exception.getResponse() : {};
     const body: ExceptionBody = typeof raw === 'string' ? { message: raw } : raw;
     const validation = Array.isArray(body.message);
@@ -41,5 +55,19 @@ export class HttpExceptionFilter implements ExceptionFilter {
           : { details: body.details }),
       requestId: request.requestId,
     });
+  }
+
+  private logServerError(exception: unknown, request: RequestWithContext): void {
+    const path = request.originalUrl.split('?', 1)[0];
+    const exceptionName =
+      exception instanceof Error ? exception.constructor.name : 'UnknownException';
+    const context = `${request.method} ${path} requestId=${request.requestId} ${exceptionName}`;
+
+    if (process.env.NODE_ENV !== 'production' && exception instanceof Error) {
+      this.logger.error(`${context}: ${exception.message}`, exception.stack);
+      return;
+    }
+
+    this.logger.error(context);
   }
 }

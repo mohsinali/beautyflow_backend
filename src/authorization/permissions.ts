@@ -46,6 +46,8 @@ export enum Permission {
   VISIT_OVERRIDE_PRICE = 'visit:override-price',
   VISIT_APPLY_DISCOUNT = 'visit:apply-discount',
   VISIT_MARK_PAID = 'visit:mark-paid',
+  REPORT_VIEW = 'report:view',
+  REPORT_FINANCIAL_VIEW = 'report:view-financial',
   PLATFORM_TENANT_CREATE = 'platform.tenant.create',
   PLATFORM_TENANT_VIEW = 'platform.tenant.view',
   PLATFORM_TENANT_UPDATE = 'platform.tenant.update',

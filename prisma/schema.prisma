@@ -410,6 +410,8 @@ model Visit {
 
   @@unique([id, tenantId])
   @@index([tenantId, branchId, status, createdAt])
+  @@index([tenantId, branchId, paymentStatus, paidAt])
+  @@index([tenantId, branchId, status, completedAt])
   @@index([tenantId, customerId, createdAt])
 }
 
@@ -437,4 +439,5 @@ model VisitItem {
   @@unique([id, tenantId])
   @@index([tenantId, visitId, status])
   @@index([tenantId, providerId, status])
+  @@index([tenantId, status, completedAt])
 }
