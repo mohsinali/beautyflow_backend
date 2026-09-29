@@ -70,3 +70,7 @@ export class UpdateServiceProviderInvitationEmailDto {
 export class ReplaceQualificationsDto {
   @IsArray() @ArrayMaxSize(500) @IsUUID('4', { each: true }) serviceIds!: string[];
 }
+
+export class ReplaceServiceProvidersDto {
+  @IsArray() @ArrayMaxSize(500) @IsUUID('4', { each: true }) providerIds!: string[];
+}

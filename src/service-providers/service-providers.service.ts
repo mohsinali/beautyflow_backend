@@ -774,6 +774,75 @@ export class ServiceProvidersService {
     return this.qualifications(actor, providerId);
   }
 
+  async replaceServiceProviders(
+    tenantId: string,
+    serviceId: string,
+    rawIds: string[],
+    actor: AuthContext,
+    request: RequestWithContext,
+  ) {
+    const providerIds = [...new Set(rawIds)];
+    const service = await this.prisma.catalogService.findFirst({
+      where: { id: serviceId, tenantId, deletedAt: null },
+      select: { id: true, isActive: true, category: { select: { isActive: true } } },
+    });
+    if (!service) throw this.notFound('CATALOG_SERVICE_NOT_FOUND', 'Catalog service not found');
+
+    const existing = await this.prisma.providerService.findMany({
+      where: { tenantId, catalogServiceId: serviceId },
+      select: { providerProfileId: true },
+    });
+    const existingIds = new Set(existing.map((item) => item.providerProfileId));
+    const addedIds = providerIds.filter((id) => !existingIds.has(id));
+    const removedIds = existing
+      .map((item) => item.providerProfileId)
+      .filter((id) => !providerIds.includes(id));
+
+    if (addedIds.length && (!service.isActive || !service.category.isActive))
+      throw this.notFound('CATALOG_SERVICE_NOT_FOUND', 'Active catalog service was not found');
+
+    if (providerIds.length) {
+      const count = await this.prisma.serviceProviderProfile.count({
+        where: { id: { in: providerIds }, tenantId, deletedAt: null },
+      });
+      if (count !== providerIds.length)
+        throw this.notFound(
+          'SERVICE_PROVIDER_NOT_FOUND',
+          'One or more service providers were not found',
+        );
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      if (removedIds.length)
+        await tx.providerService.deleteMany({
+          where: { tenantId, catalogServiceId: serviceId, providerProfileId: { in: removedIds } },
+        });
+      if (addedIds.length)
+        await tx.providerService.createMany({
+          data: addedIds.map((providerProfileId) => ({
+            tenantId,
+            catalogServiceId: serviceId,
+            providerProfileId,
+          })),
+          skipDuplicates: true,
+        });
+      await this.audit.record(
+        {
+          action: 'SERVICE_PROVIDER_QUALIFICATIONS_REPLACED',
+          entityType: 'CatalogService',
+          entityId: serviceId,
+          tenantId,
+          actorUserId: actor.userId,
+          metadata: { providerIds, addedIds, removedIds },
+          request,
+        },
+        tx,
+      );
+    });
+
+    return { providerIds };
+  }
+
   async eligible(auth: AuthContext, branchId: string, serviceId: string) {
     const tenantId = this.tenant(auth);
     if (auth.tenantRole === TenantRole.SERVICE_PROVIDER)

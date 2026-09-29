@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ServiceCatalogModule } from '../service-catalog/service-catalog.module';
 import {
   ProviderEligibilityController,
+  ServiceProviderQualificationsController,
   ServiceProvidersController,
 } from './service-providers.controller';
 import { ServiceProvidersService } from './service-providers.service';
@@ -12,7 +13,11 @@ import { InvitationsModule } from '../invitations/invitations.module';
 
 @Module({
   imports: [ServiceCatalogModule, InvitationsModule],
-  controllers: [ServiceProvidersController, ProviderEligibilityController],
+  controllers: [
+    ServiceProvidersController,
+    ServiceProviderQualificationsController,
+    ProviderEligibilityController,
+  ],
   providers: [
     ServiceProvidersService,
     ProviderPhotoService,

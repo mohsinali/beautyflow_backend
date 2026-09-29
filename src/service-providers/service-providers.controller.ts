@@ -26,6 +26,7 @@ import {
   CreateServiceProviderDto,
   OnboardServiceProviderDto,
   ReplaceQualificationsDto,
+  ReplaceServiceProvidersDto,
   ServiceProviderInvitationListDto,
   ServiceProviderListDto,
   UpdateServiceProviderInvitationEmailDto,
@@ -240,6 +241,32 @@ export class ServiceProvidersController {
     @Req() request: RequestWithContext,
   ) {
     return this.providers.removeQualification(tenantId, id, serviceId, actor, request);
+  }
+}
+
+@ApiTags('catalog-services')
+@ApiBearerAuth()
+@Controller('catalog-services/:serviceId/providers')
+export class ServiceProviderQualificationsController {
+  constructor(private readonly providers: ServiceProvidersService) {}
+
+  @Put()
+  @RequirePermissions(Permission.SERVICE_PROVIDER_MANAGE_QUALIFICATIONS)
+  @ApiOperation({ summary: 'Replace the providers qualified for a catalog service' })
+  replace(
+    @CurrentTenant() tenantId: string,
+    @Param('serviceId', ParseUUIDPipe) serviceId: string,
+    @Body() dto: ReplaceServiceProvidersDto,
+    @CurrentUser() actor: AuthContext,
+    @Req() request: RequestWithContext,
+  ) {
+    return this.providers.replaceServiceProviders(
+      tenantId,
+      serviceId,
+      dto.providerIds,
+      actor,
+      request,
+    );
   }
 }
 
