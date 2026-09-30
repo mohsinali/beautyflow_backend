@@ -175,7 +175,13 @@ export class VisitsService {
         startedAt: true,
         completedAt: true,
         createdAt: true,
-        visit: { select: { customer: { select: { id: true, name: true } } } },
+        catalogService: { select: { durationMinutes: true } },
+        visit: {
+          select: {
+            startedAt: true,
+            customer: { select: { id: true, name: true } },
+          },
+        },
       },
       orderBy: { createdAt: 'asc' },
     });
